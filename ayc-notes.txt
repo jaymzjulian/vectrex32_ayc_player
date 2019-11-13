@@ -1,0 +1,45 @@
+
+    // AYC crunching is as follow :
+    // - A sequence is
+    //    + A character
+    //    + A lenght + offset
+    // - First Byte is a character
+    // - Flags are inputed every 8 sequences and bits represents the following sequences, ie : b00000111 means:
+    //    + 5 characters
+    //    + 3 previous sequences
+
+JJ Translation: format is:
+
+0) ay byte
+1) flags bits
+2 -> 8) one of either:
+ * byte (single byte, cool)
+ * length+offset (format described below)
+depending on the value of each bits of the flag (high to low)
+
+SO wht is "length+offset?"
+
+read_buffer psuedocode:
+  cursor = 0
+
+  // if flag is high, we are a pattern
+  if (flag&0x80) {
+    counter = read and negate?!
+    src_ptr = read16/read8, depending on size
+    for c in counter {
+      // enfoce limits here?  java code says yes!
+      // who knows...
+      out_buffer[cursor+c] = out_buffer[src+c]
+    }
+  else {
+    data = read
+    out_buffer[cursor] = c
+
+  }
+
+  
+
+  // re-read flag every 8 frames  
+  if need_flag
+    flag = read
+  end
