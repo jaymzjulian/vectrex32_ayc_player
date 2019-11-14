@@ -4,9 +4,9 @@
 
 ' this needs to be the size of your filename, however I don't have a way to get that
 ' in gsbasic that I know of!@
-dim ay_buffer_data[7200]
+dim ay_buffer_data[7400]
 ' this might need to be 1024 for some things....
-dim comp_buffer[14,256]
+dim comp_buffer[14,1024]
 dim cursor[14]
 ' our data file
 dim ay_buffer_sizes[15]
@@ -114,12 +114,14 @@ sub play_that_music
         
           ' shove it in the buffer so we can get it back...
           comp_buffer[reg, cursor[reg]+1] = my_data
-          'print "data = ",my_data," in reg ",reg," cursor ",cursor[reg]+1
+          if reg=3
+            print "data = ",my_data," in reg ",reg," cursor ",cursor[reg]+1," coffset ",coffset[reg]," flags ",comp_flags[reg]
+          endif
           cursor[reg] = cursor[reg] + 1
-          cursor[reg] = cursor[reg] mod 256
+          cursor[reg] = cursor[reg] mod (ay_buffer_sizes[reg]*256)
 
         else
-          ' 8 bits for length - but multiplied by ay_buffer_size[reg]
+          ' 8 bits for length - but multiplied by ay_buffer_sizes[reg]
           ' this is negated - but why?
           premaining[reg] = 256-ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]]
           coffset[reg] = coffset[reg] + 1
@@ -130,6 +132,15 @@ sub play_that_music
           if ay_buffer_sizes[reg] != 1
             poffset[reg] = poffset[reg] + ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]] * 256
             coffset[reg] = coffset[reg] + 1
+          endif
+          if reg=3
+            print "FAIL: ",reg," tries to set poffset of ",poffset[reg], " coffset=",coffset[reg], " flags=",comp_flags[reg]
+          endif
+          if poffset[reg] > 256*ay_buffer_sizes[reg]
+            print "FAIL: ",reg," tries to set poffset of ",poffset[reg], " coffset=",coffset[reg]
+            while true
+              a=1
+            endwhile
           endif
           ' wrap 0
           if premaining[reg] = 0
@@ -161,15 +172,16 @@ sub play_that_music
         
         ' this comes from the buffer, according ot the java code...
         'my_data = ay_buffer_data[ay_buffer_offsets[reg] + poffset[reg]]
+        'print "reg -> ",reg," -> ",poffset[reg]+1
         my_data = comp_buffer[reg, poffset[reg]+1]
         
         ' shove it in the buffer so we can get it back
         comp_buffer[reg, cursor[reg]+1] = my_data
         cursor[reg] = cursor[reg]+1
-        cursor[reg] = cursor[reg] mod 256
+        cursor[reg] = cursor[reg] mod  (ay_buffer_sizes[reg]*256) 
 
         poffset[reg] = poffset[reg] + 1
-        poffset[reg] = poffset[reg] mod 256
+        poffset[reg] = poffset[reg] mod  (ay_buffer_sizes[reg]*256) 
         premaining[reg] = premaining[reg] - 1
         outregs[reg, 1] = reg - 1
         outregs[reg, 2] = my_data
