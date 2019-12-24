@@ -88,27 +88,31 @@ sub load_and_init(filename)
   print "AYC: Read ",ftell(fh),"bytes sucessfully"
 endsub
 
-sub restart_music
-  print "AYC: Restart"
-    ' init our flags here too
-  for reg = 1 to max_regs
+sub restart_reg(reg)
     last_flags[reg] = 0
     comp_flags[reg] = 0
     poffset[reg] = 0
     coffset[reg] = 0
     cursor[reg] = 0
     premaining[reg] = 0
+endsub
+
+sub restart_music
+  print "AYC: Restart"
+    ' init our flags here too
+  for reg = 1 to max_regs
+    call restart_reg(reg)
   next
 endsub
 
 sub check_loop(reg)
         ' loop
         if ay_buffer_offsets[reg] + coffset[reg] > ay_data_length
-          coffset[reg] = 0
+          call restart_reg(reg)
         endif
         if reg < max_regs
           if ay_buffer_offsets[reg] + coffset[reg] > ay_buffer_offsets[reg+1]
-            coffset[reg] = 0
+            call restart_reg(reg)
           endif
         endif
 endsub
