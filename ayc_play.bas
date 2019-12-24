@@ -34,7 +34,7 @@ controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
 call TextSprite("AYC TEST")
 
 while controls[1,3] = 0
-  'controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
+  controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
   call play_that_music
 endwhile
 
@@ -117,9 +117,9 @@ sub play_that_music
   dim outregs[max_regs, 2]
   played_frames = played_frames + 1
   ' reset the data if we're at 0
-  if played_frames >= ayc_duration
-    call restart_music
-  endif
+  'if played_frames >= ayc_duration
+  '  call restart_music
+  'endif
 
   ' play loop
   for reg = 1 to max_regs
