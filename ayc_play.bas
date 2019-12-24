@@ -19,6 +19,7 @@ dim ayc_duration
 dim ay_buffer_data
 dim ayc_duration
 dim played_frames
+dim ay_data_length
 max_regs = 14
 
 
@@ -73,7 +74,9 @@ sub load_and_init(filename)
   endwhile
 
   ' read the remainign bytes into the file - we otherwise have buffer pointers...
+  i = ftell(fh)
   ay_buffer_data = fread(100000, fh)
+  ay_data_length = ftell(fh) - i
 
   ' fix the buffer pointers?
   for reg = 1 to 14
@@ -86,6 +89,7 @@ sub load_and_init(filename)
 endsub
 
 sub restart_music
+  print "AYC: Restart"
     ' init our flags here too
   for reg = 1 to max_regs
     last_flags[reg] = 0
@@ -156,6 +160,15 @@ sub play_that_music
       if last_flags[reg] = 0
         comp_flags[reg] = ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]]
         coffset[reg] = coffset[reg] + 1
+        ' loop
+        if ay_buffer_offsets[reg] + coffset[reg] > ay_data_length
+          coffset[reg] = 0
+        endif
+        if reg < max_regs
+          if ay_buffer_offsets[reg] + coffset[reg] > ay_buffer_offsets[reg+1]
+            coffset[reg] = 0
+          endif
+        endif
         'print reg," -> read flags ",comp_flags[reg]
       endif
       ' This should be an 'and 7', but i had weirdness with that!
