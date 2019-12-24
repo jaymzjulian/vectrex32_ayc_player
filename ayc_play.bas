@@ -4,6 +4,9 @@
 ' TODO: possibly refactor this to be a struct of an ayc_data type, so it can be passed
 ' instead of global
 '---------------------------
+' if this is 1, we call Sound, if this is 0, we call FillBuffer, and
+' play via the codesprite
+buffer_mode = 0
 dim comp_buffer[14]
 dim cursor[14]
 ' our data file
@@ -37,6 +40,10 @@ while controls[1,3] = 0
   controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
   call play_that_music
 endwhile
+
+sub fill_buffer(outregs)
+  ' FIXME: fill in implementation here!
+endsub
 
 sub load_and_init(filename)
   ' load the AYC file
@@ -99,31 +106,30 @@ endsub
 
 sub restart_music
   print "AYC: Restart"
+  played_frames = 0
     ' init our flags here too
   for reg = 1 to max_regs
     call restart_reg(reg)
   next
 endsub
 
-sub check_loop(reg)
-        ' loop
-        if ay_buffer_offsets[reg] + coffset[reg] > ay_data_length
-          call restart_reg(reg)
-        endif
-        if reg < max_regs
-          if ay_buffer_offsets[reg] + coffset[reg] > ay_buffer_offsets[reg+1]
-            call restart_reg(reg)
-          endif
-        endif
-endsub
+function read_with_coffset(reg)
+  if (ay_buffer_offsets[reg] + coffset[reg]) > ay_data_length
+    return 0
+  endif
+  if reg < max_regs and (ay_buffer_offsets[reg] + coffset[reg]) >= ay_buffer_offsets[reg+1]
+    return 0
+  endif
+  return ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]] 
+endfunction
 
 sub play_that_music
   dim outregs[max_regs, 2]
   played_frames = played_frames + 1
   ' reset the data if we're at 0
-  'if played_frames >= ayc_duration
-  '  call restart_music
-  'endif
+  if played_frames >= ayc_duration
+    call restart_music
+  endif
 
   ' play loop
   for reg = 1 to max_regs
@@ -134,7 +140,7 @@ sub play_that_music
       if (comp_flags[reg] & 128) = 0
         ' we're direct data - shove it in the AY!
         'print reg," reading from ",ay_buffer_offsets[reg] + coffset[reg]
-        my_data = ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]]
+        my_data = read_with_coffset(reg)
         coffset[reg] = coffset[reg] + 1
         outregs[reg, 1] = reg - 1
         outregs[reg, 2] = my_data
@@ -143,22 +149,20 @@ sub play_that_music
         comp_buffer[reg][cursor[reg]+1] = my_data
         cursor[reg] = cursor[reg] + 1
         cursor[reg] = cursor[reg] mod (ay_buffer_sizes[reg]*256)
-        call check_loop(reg)
 
       else
         ' 8 bits for length - but multiplied by ay_buffer_sizes[reg]
         ' this is negated - but why?
-        premaining[reg] = 256-ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]]
+        premaining[reg] = 256-read_with_coffset(reg)
         coffset[reg] = coffset[reg] + 1
 
         ' depending on size, 8 or 16bits for offset
-        poffset[reg] = ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]] 
+        poffset[reg] = read_with_coffset(reg)
         coffset[reg] = coffset[reg] + 1
         if ay_buffer_sizes[reg] != 1
-          poffset[reg] = poffset[reg] + ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]] * 256
+          poffset[reg] = poffset[reg] + read_with_coffset(reg) * 256
           coffset[reg] = coffset[reg] + 1
         endif
-        call check_loop(reg)
         if poffset[reg] > 256*ay_buffer_sizes[reg]
           print "FAIL: ",reg," tries to set poffset of ",poffset[reg], " coffset=",coffset[reg]
           while true
@@ -176,9 +180,8 @@ sub play_that_music
       comp_flags[reg] = (comp_flags[reg] * 2) & 255
       ' every 8 frames, we grab new flags
       if last_flags[reg] = 0
-        comp_flags[reg] = ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]]
+        comp_flags[reg] = read_with_coffset(reg)
         coffset[reg] = coffset[reg] + 1
-        call check_loop(reg)
         'print reg," -> read flags ",comp_flags[reg]
       endif
       ' This should be an 'and 7', but i had weirdness with that!
@@ -230,5 +233,9 @@ sub play_that_music
     endif
   endif
   'print outregs
-  call Sound(outregs)
+  if buffer_mode = 0
+    call Sound(outregs)
+  else
+    call fill_buffer(outregs)
+  endif
 endsub
