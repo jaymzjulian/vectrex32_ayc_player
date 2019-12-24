@@ -1,7 +1,9 @@
 '---------------------------
 ' GLOBALS - these must be global 
 ' for your music to play!
-
+' TODO: possibly refactor this to be a struct of an ayc_data type, so it can be passed
+' instead of global
+'---------------------------
 dim comp_buffer[14]
 dim cursor[14]
 ' our data file
@@ -13,63 +15,17 @@ dim comp_flags[14]
 dim coffset[14]
 dim poffset[14]
 dim premaining[14]
+dim ayc_duration
+dim ay_buffer_data
 
-'-------------------------------------------
-' Everything below here can go in a function
-'-------------------------------------------
 
-' load the AYC file
-fh = fopen("switchblade.ayc", "rb")
+' load the AYC
+call load_and_init("switchblade.ayc")
 
-ayc_duration = fgetc(fh) + fgetc(fh)*256
-header_offset = 0
-print "Duration ",ayc_duration," frames"
-for reg = 1 to 14
-  ay_buffer_sizes[reg] = fgetc(fh)
-  if ay_buffer_sizes[reg] = 1
-    comp_buffer[reg] = ByteArray(256)
-  else
-    comp_buffer[reg] = ByteArray(1024)
-  endif
-  ay_buffer_offsets[reg] = fgetc(fh) + fgetc(fh)*256 
-  ' correct for relative offset
-  ay_buffer_offsets[reg] = ay_buffer_offsets[reg]+(reg-1)*3+4
-  if reg = 1
-    header_offset = ay_buffer_offsets[reg] 
-  endif
-  ' gsbasic fix
-  ay_buffer_offsets[reg] = ay_buffer_offsets[reg] - header_offset
-  ' init our flags here too
-  last_flags[reg] = 0
-  comp_flags[reg] = 0
-  poffset[reg] = 0
-  coffset[reg] = 0
-  cursor[reg] = 0
-  premaining[reg] = 0
-  print "Reg ",reg," buffer size ",ay_buffer_sizes[reg]," @ ",ay_buffer_offsets[reg]
-next
-
-boffset = 1
-fl = 0
-print "Skipping from ",ftell(fh)," to ",ay_buffer_offsets[1]+header_offset
-while ftell(fh) != (ay_buffer_offsets[1]+header_offset)
-  call fgetc(fh)
-endwhile
-
-' read the remainign bytes into the file - we otherwise have buffer pointers...
-ay_buffer_data = fread(100000, fh)
-
-' fix the buffer pointers?
-for reg = 1 to 14
-  ' now read the buffer data - until next buffer offset or EOF
-  ' this fixes later the gsbasic's dim is alays start at 1 thing
-  ay_buffer_offsets[reg] = ay_buffer_offsets[reg] + 1
-next
-
-print "Read ",ftell(fh),"bytes sucessfully"
-  
-
+' set the framerate to 50fps, since that is what most AYC tracks are
 call SetFrameRate(50)
+
+' play!
 controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
 call TextSprite("AYC TEST")
 
@@ -82,6 +38,57 @@ while controls[1,3] = 0
   call play_that_music
 endwhile
 
+sub load_and_init(filename)
+  ' load the AYC file
+  fh = fopen(filename, "rb")
+
+  ayc_duration = fgetc(fh) + fgetc(fh)*256
+  header_offset = 0
+  print "AYC: Duration ",ayc_duration," frames"
+  for reg = 1 to 14
+    ay_buffer_sizes[reg] = fgetc(fh)
+    if ay_buffer_sizes[reg] = 1
+      comp_buffer[reg] = ByteArray(256)
+    else
+      comp_buffer[reg] = ByteArray(1024)
+    endif
+    ay_buffer_offsets[reg] = fgetc(fh) + fgetc(fh)*256 
+    ' correct for relative offset
+    ay_buffer_offsets[reg] = ay_buffer_offsets[reg]+(reg-1)*3+4
+    if reg = 1
+      header_offset = ay_buffer_offsets[reg] 
+    endif
+    ' gsbasic fix
+    ay_buffer_offsets[reg] = ay_buffer_offsets[reg] - header_offset
+    ' init our flags here too
+    last_flags[reg] = 0
+    comp_flags[reg] = 0
+    poffset[reg] = 0
+    coffset[reg] = 0
+    cursor[reg] = 0
+    premaining[reg] = 0
+    print "AYC: Reg ",reg," buffer size ",ay_buffer_sizes[reg]," @ ",ay_buffer_offsets[reg]
+  next
+
+  boffset = 1
+  fl = 0
+  print "AYC: Skipping from ",ftell(fh)," to ",ay_buffer_offsets[1]+header_offset
+  while ftell(fh) != (ay_buffer_offsets[1]+header_offset)
+    call fgetc(fh)
+  endwhile
+
+  ' read the remainign bytes into the file - we otherwise have buffer pointers...
+  ay_buffer_data = fread(100000, fh)
+
+  ' fix the buffer pointers?
+  for reg = 1 to 14
+    ' now read the buffer data - until next buffer offset or EOF
+    ' this fixes later the gsbasic's dim is alays start at 1 thing
+    ay_buffer_offsets[reg] = ay_buffer_offsets[reg] + 1
+  next
+
+  print "AYC: Read ",ftell(fh),"bytes sucessfully"
+endsub
 
 sub play_that_music
   frame_count = frame_count + 1
