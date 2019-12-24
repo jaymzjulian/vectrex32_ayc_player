@@ -34,7 +34,7 @@ controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
 call TextSprite("AYC TEST")
 
 while controls[1,3] = 0
-  controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
+  'controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
   call play_that_music
 endwhile
 
@@ -101,6 +101,18 @@ sub restart_music
   next
 endsub
 
+sub check_loop(reg)
+        ' loop
+        if ay_buffer_offsets[reg] + coffset[reg] > ay_data_length
+          coffset[reg] = 0
+        endif
+        if reg < max_regs
+          if ay_buffer_offsets[reg] + coffset[reg] > ay_buffer_offsets[reg+1]
+            coffset[reg] = 0
+          endif
+        endif
+endsub
+
 sub play_that_music
   dim outregs[max_regs, 2]
   played_frames = played_frames + 1
@@ -127,6 +139,7 @@ sub play_that_music
         comp_buffer[reg][cursor[reg]+1] = my_data
         cursor[reg] = cursor[reg] + 1
         cursor[reg] = cursor[reg] mod (ay_buffer_sizes[reg]*256)
+        call check_loop(reg)
 
       else
         ' 8 bits for length - but multiplied by ay_buffer_sizes[reg]
@@ -141,6 +154,7 @@ sub play_that_music
           poffset[reg] = poffset[reg] + ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]] * 256
           coffset[reg] = coffset[reg] + 1
         endif
+        call check_loop(reg)
         if poffset[reg] > 256*ay_buffer_sizes[reg]
           print "FAIL: ",reg," tries to set poffset of ",poffset[reg], " coffset=",coffset[reg]
           while true
@@ -160,15 +174,7 @@ sub play_that_music
       if last_flags[reg] = 0
         comp_flags[reg] = ay_buffer_data[ay_buffer_offsets[reg] + coffset[reg]]
         coffset[reg] = coffset[reg] + 1
-        ' loop
-        if ay_buffer_offsets[reg] + coffset[reg] > ay_data_length
-          coffset[reg] = 0
-        endif
-        if reg < max_regs
-          if ay_buffer_offsets[reg] + coffset[reg] > ay_buffer_offsets[reg+1]
-            coffset[reg] = 0
-          endif
-        endif
+        call check_loop(reg)
         'print reg," -> read flags ",comp_flags[reg]
       endif
       ' This should be an 'and 7', but i had weirdness with that!
