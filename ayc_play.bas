@@ -25,13 +25,20 @@ dim played_frames
 dim ay_data_length
 ' drop this if you're only doing 2 channels, leaving one for sound effects
 max_regs = 14
+
+'--------------------------------------------------------------------'
 ' This is only required if buffer_mode is set to 1 - you can save a few byres of ram by excluding it if you want, otherwise
+' number of buffers
 buffer_count = 1
+' rate of playback - 50hz by default...
+player_rate = 50
 current_buffer = 0
-dim ayc_pokedata[(max_regs*2+1)*5*buffer_count]
+dim ayc_pokedata[max_regs*5*buffer_count]
 dim ay_output_data[buffer_count, max_regs*2]
 ' should be in hex format, but for now this is what we get!
-ayc_playcode = { $CE, $C8, $84, $BD, $F2, $7D }
+'ayc_playcode = { $FE, $C8, $82, $BD, $F2, $7D, $fc, $c8, $82, $c3, $00, $1d, $10, $83, $ca, $54, $2f, $03, $cc, $c8, $84, $fd, $c8, $82}
+ayc_playcode = { $FE, $C8, $82, $BD, $F2, $7D }
+'--------------------------------------------------------------------'
 
 ' you'll need to allow for max_regs*buffer_count worth of iram at this location 
 ' if this is the only weird thing you're using, c882 should be fine.  c880 is better, but doens't work
@@ -39,42 +46,38 @@ ayc_playcode = { $CE, $C8, $84, $BD, $F2, $7D }
 '
 ' Also, you'll need to update the asm block for this ;).  Eventually, that will happen automatically, but
 ' I have not coded this yet
+buffer_location = $c882
 buffer_base = $c884
+' This is almost certainly wrong/destructive!
+' but is.... probably enough?
+dualport_return = 8
 
 
 ' load the AYC
 call load_and_init("switchblade.ayc")
 
+
 ' set the framerate to 50fps, since that is what most AYC tracks are
 call SetFrameRate(50)
 
 ' play!
-controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
+controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
 call TextSprite("AYC TEST")
-
-' fill our initial buffers and generate our codesprite
-if buffer_mode = 1
-  ' generate the data loader
-  call generate_ayc_pokedata_codesprite()
-  call CodeSprite(ayc_pokedata)
-  for i = 1 to buffer_count
-    call play_that_music
-  next
-  ' send to the AY if it's time
-  call CodeSprite(ayc_playcode)
-endif
+' This creates the codesprite objects that we need
+' send to the AY if it's time
+call CodeSprite(ayc_playcode)
 
 
 while controls[1,3] = 0
-  dim pd[2]
-  'call Peek($c884, 16, pd)
-  controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
+  'dim pd[2]
+  'call Peek($c882, 16, pd)
+  controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
   'print "frame:" + played_frames
   call play_that_music
   'while pd[1] = 0
   'endwhile
   'data = pd[2]
-  print data
+  'print data
 
 endwhile
 
@@ -84,7 +87,8 @@ sub generate_ayc_pokedata_codesprite()
   offset = 1
   for b = 1 to buffer_count
     for r = 1 to max_regs
-      for v = 1 to 2
+        ' incr addr to skip channel set
+        addr = addr + 1
         ' lda_imm
         ayc_pokedata[offset] = $86
         offset = offset + 1
@@ -100,21 +104,8 @@ sub generate_ayc_pokedata_codesprite()
         offset = offset + 1
         ' incr addr
         addr = addr + 1
-      next
     next
-    ' and the final $ff
-    ' lda_imm
-    ayc_pokedata[offset] = $86
-    offset = offset + 1
-    ayc_pokedata[offset] = $ff
-    offset = offset + 1
-    ' sta_abs, hi, lo
-    ayc_pokedata[offset] = $b7
-    offset = offset + 1
-    ayc_pokedata[offset] = (addr / 256) mod 256
-    offset = offset + 1
-    ayc_pokedata[offset] = addr mod 256
-    offset = offset + 1
+    ' skip the $ff
     addr = addr + 1
   next
 endsub
@@ -126,13 +117,42 @@ sub fill_buffer(outregs)
     ' our write is at +6 
     ' + 29*5*current_buffer -> buf ptr (the other part is the $ff) (2 x per reg + $ff)
     ' +1 for gsbasic
-    'print "r:"+r+"  addr:"+((((r-1)*10)+6)+(29*5*current_buffer)+1)
-    ayc_pokedata[(((r-1)*10)+6)+(14*10*current_buffer)+1] = outregs[r,2]
+    'print "r:"+r+"  addr:"+((((r-1)*5)+1)+(14*5*current_buffer)+1)
+    ayc_pokedata[(((r-1)*5)+1)+(14*5*current_buffer)+1] = outregs[r,2]
   next
   current_buffer = (current_buffer + 1) mod buffer_count
 endsub
 
+
 sub load_and_init(filename)
+  if buffer_mode = 1
+    dim pd[2]
+    call clearscreen()
+    call TextSprite("AYC Loader")
+    call pokeRAM(buffer_location, (buffer_base / 256) mod 256)
+    call pokeRAM(buffer_location+1, buffer_base mod 256)
+    addr = buffer_base
+    for b = 1 to buffer_count
+      for reg = 1 to 14
+        for v = 1 to 2
+          call pokeRAM(addr, reg-1)
+          addr = addr + 1
+        next
+      next
+      call pokeRAM(addr, $ff)
+      addr = addr + 1
+    next
+    ' why do i need two of these?  If I have one, it doens't seem to work at all.....
+    ' I have no idea what i'm doing wrong :)
+    controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
+    'call Peek(buffer_location, 2, pd)
+    controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
+    call clearscreen()
+    'while pd[1] = 0
+    'endwhile
+    'data = pd[2]
+    'print data
+  endif
   ' load the AYC file
   fh = fopen(filename, "rb")
   played_frames = 0
@@ -180,6 +200,16 @@ sub load_and_init(filename)
   next
 
   print "AYC: Read ",ftell(fh),"bytes sucessfully"
+  
+  ' fill our initial buffers and generate our codesprite
+  if buffer_mode = 1
+    ' generate the data loader
+    call generate_ayc_pokedata_codesprite()
+    call CodeSprite(ayc_pokedata)
+    for i = 1 to buffer_count
+      call play_that_music
+    next
+  endif
 endsub
 
 sub restart_reg(reg)
@@ -325,4 +355,14 @@ sub play_that_music
   else
     call fill_buffer(outregs)
   endif
+endsub
+
+' Stole this function from Malban's lightpen test - thanks!
+sub pokeRAM(where, what)
+   if what<0 then
+    what = 256 +what
+   endif
+
+   poke_RAM = {$86, what, $b7, (where/256) MOD 256, where MOD 256}
+   call CodeSprite(poke_RAM)
 endsub
