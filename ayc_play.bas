@@ -6,7 +6,7 @@
 '---------------------------
 ' if this is 1, we call Sound, if this is 0, we call FillBuffer, and
 ' play via the codesprite
-buffer_mode = 0
+buffer_mode = 1
 dim comp_buffer[14]
 dim cursor[14]
 ' our data file
@@ -23,7 +23,23 @@ dim ay_buffer_data
 dim ayc_duration
 dim played_frames
 dim ay_data_length
+' drop this if you're only doing 2 channels, leaving one for sound effects
 max_regs = 14
+' This is only required if buffer_mode is set to 1 - you can save a few byres of ram by excluding it if you want, otherwise
+buffer_count = 1
+current_buffer = 0
+dim ayc_pokedata[(max_regs*2+1)*5*buffer_count]
+dim ay_output_data[buffer_count, max_regs*2]
+' should be in hex format, but for now this is what we get!
+ayc_playcode = { $CE, $C8, $84, $BD, $F2, $7D }
+
+' you'll need to allow for max_regs*buffer_count worth of iram at this location 
+' if this is the only weird thing you're using, c882 should be fine.  c880 is better, but doens't work
+' on all v32 firmware revisions right now....
+'
+' Also, you'll need to update the asm block for this ;).  Eventually, that will happen automatically, but
+' I have not coded this yet
+buffer_base = $c884
 
 
 ' load the AYC
@@ -36,13 +52,84 @@ call SetFrameRate(50)
 controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
 call TextSprite("AYC TEST")
 
+' fill our initial buffers and generate our codesprite
+if buffer_mode = 1
+  ' generate the data loader
+  call generate_ayc_pokedata_codesprite()
+  call CodeSprite(ayc_pokedata)
+  for i = 1 to buffer_count
+    call play_that_music
+  next
+  ' send to the AY if it's time
+  call CodeSprite(ayc_playcode)
+endif
+
+
 while controls[1,3] = 0
+  dim pd[2]
+  'call Peek($c884, 16, pd)
   controls = WaitForFrame(JoystickNone, Controller2, JoystickNone)
+  'print "frame:" + played_frames
   call play_that_music
+  'while pd[1] = 0
+  'endwhile
+  'data = pd[2]
+  print data
+
 endwhile
 
+' generate a codesprite with lda #imm, sta buffer_base+offset
+sub generate_ayc_pokedata_codesprite()
+  addr = buffer_base
+  offset = 1
+  for b = 1 to buffer_count
+    for r = 1 to max_regs
+      for v = 1 to 2
+        ' lda_imm
+        ayc_pokedata[offset] = $86
+        offset = offset + 1
+        ' this will be filled in later!
+        ayc_pokedata[offset] = (r-1)
+        offset = offset + 1
+        ' sta_abs, hi, lo
+        ayc_pokedata[offset] = $b7
+        offset = offset + 1
+        ayc_pokedata[offset] = (addr / 256) mod 256
+        offset = offset + 1
+        ayc_pokedata[offset] = addr mod 256
+        offset = offset + 1
+        ' incr addr
+        addr = addr + 1
+      next
+    next
+    ' and the final $ff
+    ' lda_imm
+    ayc_pokedata[offset] = $86
+    offset = offset + 1
+    ayc_pokedata[offset] = $ff
+    offset = offset + 1
+    ' sta_abs, hi, lo
+    ayc_pokedata[offset] = $b7
+    offset = offset + 1
+    ayc_pokedata[offset] = (addr / 256) mod 256
+    offset = offset + 1
+    ayc_pokedata[offset] = addr mod 256
+    offset = offset + 1
+    addr = addr + 1
+  next
+endsub
+
 sub fill_buffer(outregs)
-  ' FIXME: fill in implementation here!
+  'print "fill:",current_buffer
+  for r = 1 to 14
+    ' 5 bytes per "reg"
+    ' our write is at +6 
+    ' + 29*5*current_buffer -> buf ptr (the other part is the $ff) (2 x per reg + $ff)
+    ' +1 for gsbasic
+    'print "r:"+r+"  addr:"+((((r-1)*10)+6)+(29*5*current_buffer)+1)
+    ayc_pokedata[(((r-1)*10)+6)+(14*10*current_buffer)+1] = outregs[r,2]
+  next
+  current_buffer = (current_buffer + 1) mod buffer_count
 endsub
 
 sub load_and_init(filename)
