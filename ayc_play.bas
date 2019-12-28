@@ -65,9 +65,9 @@ if buffer_mode = 1
   ' the listing for this is an other file within the github, but I built it with 
   ' asm80.com :)
   '--------------------------------------------------------------------'
-  '   $fc,$d0,$08,$26,$09, _
   ' first line: ldd $d008/bne no_play - check via
   ' second line: call sound_bytes_x, increment dualport return
+     '$fc,$d0,$08,$26,$09, _
   ' third line: write to VIA for next countdown timer
   ' fourth line: incremener buffer
   ayc_playcode = { _
@@ -104,19 +104,22 @@ if buffer_mode = 1
 
 endif
 
-
-' load the AYC
-call load_and_init("switchblade.ayc")
-
-
 ' set the framerate to 50fps, since that is what most AYC tracks are
 ' in buffer mode, we set it just as fast as we can update it - our buffer code
 ' will actually cause this to be ignored anyhow....
 if buffer_mode = 1
-  call SetFrameRate(500)
+	' 150 seems to be the max framerate the vectrex32 wil actually set
+	' if you don't set it, it will forcably overwrite our VIA settings anyhow, so we set this
+	' as high as we can, and then override it in our codesprites....
+  call SetFrameRate(150)
 else
   call SetFrameRate(50)
 endif
+print GetFrameRate()
+
+' load the AYC
+call load_and_init("switchblade.ayc")
+
 controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
 
 ' In buffer mode, ayc_startup must be the VERY FIRST codesprite called, else
@@ -141,19 +144,22 @@ ayc_start_time = GetTickCount()
 while controls[1,3] = 0
   ' if you're using buffered mode, you should call this to update the initial timer
   ' vs the tick counter
+	'
+	' this should be called _directly before_ wait for frame, since it may block until the previous one
+	' is (mostly) complete, specifically until ayc_exit is called - this is to ensure that we're updating loops
+	' correctly....
   if buffer_mode = 1
     call update_music_vbi
   else
     call play_that_music
   endif
-  'dim pd[2]
-  'call Peek($c882, 16, pd)
   controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
-  'print "frame:" + played_frames
-  'while pd[1] = 0
-  'endwhile
-  'data = pd[2]
-  'print data
+	' safety: wait until we do stuff, since we have _no other code_.  you probably don't
+	' need this in teh real world...
+  if buffer_mode = 1
+		while Peek(dualport_status) != 255
+		endwhile
+	endif
 endwhile
 
 
@@ -189,15 +195,15 @@ sub update_music_vbi
   ' NOT be fpmath, which is almost certainly slow as hell.  But it also might not be
   ' worht optimizing.... 
   current_tick = GetTickCount() - ayc_start_time 
-  ' where should be be _right now_...
-  music_target = (current_tick / 960.0) * player_rate
+  ' where should be for the _next_ frame
+  music_target = (current_tick / 960.0) * player_rate + 1
   ' ... vs where are we right now...
   played_to = ayc_buffer_played
 
   ' music_target _SHOULD_ be ahead... as a general rule - the player is _triggered_ on the x.00 tick,
   ' and so music target should, as a general rule, be above that - and we're waiting for the next whole
   ' number to tick over....
-  wait_time = played_to - music_target
+  wait_time =  played_to - music_target
 
   ' wait_time gets multiplied by via_wait - it should be fractional, so this should work out....
   wait_time = wait_time * via_rate
