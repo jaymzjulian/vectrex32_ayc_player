@@ -8,12 +8,10 @@
 ' if this is 1, we call Sound, if this is 0, we call FillBuffer, and
 ' play via the codesprite
 buffer_mode = 1
-' Is the vectrex32 responsible fopr timing, or the music routine?  
-' 
-' Note: If you do this, you are required to time your _entire_ game from vectrex32 tick counter, since it WILL override your
-' chosen refresh rate.  
-'
-buffer_mode_preserve_refresh = 1
+' do we wait for the next frame to be "due" before we continue?
+buffer_mode_preserve_refresh = 0
+
+
 dim comp_buffer[14]
 dim cursor[14]
 ' our data file
@@ -50,6 +48,8 @@ if buffer_mode = 1
   buffer_location = $c882
   buffer_base = $c884
 
+	game_frame_count = 0
+
   ' below here is not, for the most part, user servicable :)
   via_rate = 1500000 / player_rate 
   tick_rate = 960 / player_rate
@@ -66,15 +66,13 @@ if buffer_mode = 1
   ' the listing for this is an other file within the github, but I built it with 
   ' asm80.com :)
   '--------------------------------------------------------------------'
-  ' first line: ldd $d008/bne no_play - check via
+  ' first line: check via
   ' second line: call sound_bytes_x, increment dualport return
-     '$fc,$d0,$08,$26,$09, _
   ' third line: write to VIA for next countdown timer
   ' fourth line: incremener buffer
   ayc_playcode = { _
+		 $86, $20, $b5, $d0, $0d, $27, $09, _		 
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256 }
-
-  print ayc_playcode
 
   '--------------------------------------------------------------------'
   ' this sets up the timer we need to keep time on the VX side...
@@ -94,22 +92,15 @@ if buffer_mode = 1
 	' note that, in VIA buffered mode, all it does is update dualport_status to the current sequence semaphore
 	' without that, playback is.... weird due to locking...
   '--------------------------------------------------------------------
-	if buffer_mode_preserve_refresh = 0
-	  ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
-								 $cc, $1, $0, $fd, $d0, $08}
-	else
-	  ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256 }
-	endif
+  ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
+	  					 $cc, $1, $0, $fd, $d0, $08}
 
 endif
 
 ' set the framerate to 50fps, since that is what most AYC tracks are
 ' in buffer mode, we set it just as fast as we can update it - our buffer code
 ' will actually cause this to be ignored anyhow....
-if buffer_mode = 1
-	' 150 seems to be the max framerate the vectrex32 wil actually set
-	' if you don't set it, it will forcably overwrite our VIA settings anyhow, so we set this
-	' as high as we can, and then override it in our codesprites....
+if buffer_mode = 1 and buffer_mode_preserve_refresh = 0
   call SetFrameRate(150)
 else
   call SetFrameRate(50)
@@ -187,6 +178,13 @@ sub update_music_vbi
   endif
 
 
+	if buffer_mode_preserve_refresh = 1
+		target_tick = (game_frame_count * 960) / GetFrameRate()
+  	while (GetTickCount() - ayc_start_time) < target_tick
+		endwhile
+		game_frame_count = game_frame_count + 1
+	endif
+
 
   ' This is all terrible and absolutely should
   ' NOT be fpmath, which is almost certainly slow as hell.  But it also might not be
@@ -196,6 +194,7 @@ sub update_music_vbi
   music_target = (current_tick / 960.0) * player_rate + 1
   ' ... vs where are we right now...
   played_to = ayc_buffer_played
+
 
   ' music_target _SHOULD_ be ahead... as a general rule - the player is _triggered_ on the x.00 tick,
   ' and so music target should, as a general rule, be above that - and we're waiting for the next whole
@@ -211,7 +210,7 @@ sub update_music_vbi
   if wait_time > 65535
     wait_time = 65535
   endif
-  'print "AYC: music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
+  print "AYC: music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
 
   ' shove that wait_time in the codesptie for the VIA, so we wait for that
   ayc_init[2] = wait_time mod 256
