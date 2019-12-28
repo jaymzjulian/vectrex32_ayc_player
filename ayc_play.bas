@@ -40,8 +40,8 @@ if buffer_mode = 1
   player_rate = 50
   ' This is almost certainly wrong/destructive!
   ' but is.... probably enough?
-  dualport_return = 0
-  dualport_status = 1
+  dualport_return = 8
+  dualport_status = 9
   ' you'll need to allow for max_regs*buffer_count worth of iram at this location 
   ' if this is the only weird thing you're using, c882 should be fine.  c880 is better, but doens't work
   ' on all v32 firmware revisions right now....
@@ -92,6 +92,10 @@ if buffer_mode = 1
 	' note that, in VIA buffered mode, all it does is update dualport_status to the current sequence semaphore
 	' without that, playback is.... weird due to locking...
   '--------------------------------------------------------------------
+	' second line is:
+	' ldd #$100
+	' std $d008
+	' which should set timer b to "almost nothing"
   ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
 	  					 $cc, $1, $0, $fd, $d0, $08}
 
@@ -101,7 +105,7 @@ endif
 ' in buffer mode, we set it just as fast as we can update it - our buffer code
 ' will actually cause this to be ignored anyhow....
 if buffer_mode = 1 and buffer_mode_preserve_refresh = 0
-  call SetFrameRate(150)
+  call SetFrameRate(100)
 else
   call SetFrameRate(50)
 endif
@@ -161,10 +165,10 @@ sub update_music_vbi
 		' wait for the dualport to have returned
 		' why is this a sequence?  because if not, bad things happen in the bathroom...
 		' once we've hit it, we update the codesprite to chang the sequence for the next run, so that we
-		' don't lose track
+		' don't lose track	
 		while Peek(dualport_status) != ayc_dp_sequence
 		endwhile
-		ayc_dp_sequence = (ayc_dp_sequence + 1) mod 256
+		ayc_dp_sequence = (ayc_dp_sequence + 4) mod 256
 		ayc_exit[2] = ayc_dp_sequence
 	  ' fill any used buffers with new sound data
   	ayc_played_this_frame = Peek(dualport_return)
