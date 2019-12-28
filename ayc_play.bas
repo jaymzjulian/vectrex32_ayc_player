@@ -4,9 +4,16 @@
 ' TODO: possibly refactor this to be a struct of an ayc_data type, so it can be passed
 ' instead of global
 '---------------------------
+'
 ' if this is 1, we call Sound, if this is 0, we call FillBuffer, and
 ' play via the codesprite
 buffer_mode = 1
+' Is the vectrex32 responsible fopr timing, or the music routine?  
+' 
+' Note: If you do this, you are required to time your _entire_ game from vectrex32 tick counter, since it WILL override your
+' chosen refresh rate.  
+'
+buffer_mode_preserve_refresh = 1
 dim comp_buffer[14]
 dim cursor[14]
 ' our data file
@@ -26,31 +33,76 @@ dim ay_data_length
 ' drop this if you're only doing 2 channels, leaving one for sound effects
 max_regs = 14
 
-'--------------------------------------------------------------------'
-' This is only required if buffer_mode is set to 1 - you can save a few byres of ram by excluding it if you want, otherwise
-' number of buffers
-buffer_count = 1
-' rate of playback - 50hz by default...
-player_rate = 50
-current_buffer = 0
-dim ayc_pokedata[max_regs*5*buffer_count]
-dim ay_output_data[buffer_count, max_regs*2]
-' should be in hex format, but for now this is what we get!
-'ayc_playcode = { $FE, $C8, $82, $BD, $F2, $7D, $fc, $c8, $82, $c3, $00, $1d, $10, $83, $ca, $54, $2f, $03, $cc, $c8, $84, $fd, $c8, $82}
-ayc_playcode = { $FE, $C8, $82, $BD, $F2, $7D }
-'--------------------------------------------------------------------'
+if buffer_mode = 1
+  '--------------------------------------------------------------------'
+  ' This is only required if buffer_mode is set to 1 - you can save a few byres of ram by excluding it if you want, otherwise
+  ' number of buffers
+  buffer_count = 1
+  ' rate of playback - 50hz by default...
+  player_rate = 50
+  ' This is almost certainly wrong/destructive!
+  ' but is.... probably enough?
+  dualport_return = 0
+  dualport_status = 1
+  ' you'll need to allow for max_regs*buffer_count worth of iram at this location 
+  ' if this is the only weird thing you're using, c882 should be fine.  c880 is better, but doens't work
+  ' on all v32 firmware revisions right now....
+  buffer_location = $c882
+  buffer_base = $c884
 
-' you'll need to allow for max_regs*buffer_count worth of iram at this location 
-' if this is the only weird thing you're using, c882 should be fine.  c880 is better, but doens't work
-' on all v32 firmware revisions right now....
-'
-' Also, you'll need to update the asm block for this ;).  Eventually, that will happen automatically, but
-' I have not coded this yet
-buffer_location = $c882
-buffer_base = $c884
-' This is almost certainly wrong/destructive!
-' but is.... probably enough?
-dualport_return = 8
+  ' below here is not, for the most part, user servicable :)
+  via_rate = 1500000 / player_rate 
+  tick_rate = 960 / player_rate
+  print "AYC: VIA Rate is "+via_rate+" cycles"
+  print "AYC: Tick Rate is "+tick_rate+" cycles"
+  current_buffer = 0
+  ' we use this being negative to represent first frame
+  ayc_buffer_played = -1
+  dim ayc_pokedata[max_regs*5*buffer_count]
+  dim ay_output_data[buffer_count, max_regs*2]
+  '--------------------------------------------------------------------'
+  ' should be in hex format, but for now this is what we get!
+  ' the listing for this is an other file within the github, but I built it with 
+  ' asm80.com :)
+  '--------------------------------------------------------------------'
+  '   $fc,$d0,$08,$26,$09, _
+  ' first line: ldd $d008/bne no_play - check via
+  ' second line: call sound_bytes_x, increment dualport return
+  ' third line: write to VIA for next countdown timer
+  ' fourth line: incremener buffer
+  ayc_playcode = { _
+     $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256 }
+
+  print ayc_playcode
+
+  '--------------------------------------------------------------------'
+  ' this sets up the timer we need to keep time on the VX side...
+  ' this will be modified by the player to set it to what's remaining for the first
+  ' vblank that we need.  it should be called as early as posisble during your dualport config
+  '
+  ' It also resets the dualport_return register to 0 - that register ends up containing how many frames were acutally played!
+	' we also store $ff in dualport_status, so that we know that we're currently running - we reset this at ayc_exit, to ensure that
+	' we only call the AY update code when the vectrex is idle, otherwise buffers get _very_ confused.
+  '--------------------------------------------------------------------'
+	' 0000   CC 30 75               LDD   #$3075  ; this gets replaced by wait_time for first music call  
+	' 0003   FD D0 08               STD   $d008   
+	' 0006   86 00                  LDA   #0   
+	' 0008   B7 01 23               STA   $123  ; this gets replaced with dualport_return
+  ayc_init = { $cc, $30, $75, $fd, $d0, $08, $86, $00, $b7, dualport_return / 256, dualport_return mod 256, _
+			$86, $ff, $b7, dualport_status / 256, dualport_status mod 256 }
+
+  '--------------------------------------------------------------------
+  ' this resets the VIA at the end, so that wait_recal doens't wait - this should be the last thing you call.
+	' note that, in VIA buffered mode, all it does is update dualport_status to $fe
+  '--------------------------------------------------------------------
+	if buffer_mode_preserve_refresh = 0
+	  ayc_exit = { $86, $fe, $b7, dualport_status / 256, dualport_status mod 256, _
+								 $cc, $1, $0, $fd, $d0, $08}
+	else
+	  ayc_exit = { $86, $fe, $b7, dualport_status / 256, dualport_status mod 256 }
+	endif
+
+endif
 
 
 ' load the AYC
@@ -58,28 +110,111 @@ call load_and_init("switchblade.ayc")
 
 
 ' set the framerate to 50fps, since that is what most AYC tracks are
-call SetFrameRate(50)
-
-' play!
+' in buffer mode, we set it just as fast as we can update it - our buffer code
+' will actually cause this to be ignored anyhow....
+if buffer_mode = 1
+  call SetFrameRate(500)
+else
+  call SetFrameRate(50)
+endif
 controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
+
+' In buffer mode, ayc_startup must be the VERY FIRST codesprite called, else
+' timing will be busted
+if buffer_mode = 1
+  call CodeSprite(ayc_init)
+endif
 call TextSprite("AYC TEST")
-' This creates the codesprite objects that we need
-' send to the AY if it's time
-call CodeSprite(ayc_playcode)
+if buffer_mode = 1
+  ' This creates the codesprite objects that we need
+  ' send to the AY if it's time
+  ' 
+  ' This needs to be called often enough to actually get useful timing...
+  call CodeSprite(ayc_playcode)
 
+  ' this needs to be the _very last thing) called, otherwise the VIA will just
+  ' timeout - this is only required, of course, if we're preserving refresh
+  call CodeSprite(ayc_exit)
+endif
 
+ayc_start_time = GetTickCount()
 while controls[1,3] = 0
+  ' if you're using buffered mode, you should call this to update the initial timer
+  ' vs the tick counter
+  if buffer_mode = 1
+    call update_music_vbi
+  else
+    call play_that_music
+  endif
   'dim pd[2]
   'call Peek($c882, 16, pd)
   controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
   'print "frame:" + played_frames
-  call play_that_music
   'while pd[1] = 0
   'endwhile
   'data = pd[2]
   'print data
-
 endwhile
+
+
+' this function is only used in buffer mode :)
+' the algorythm is:
+' 0) update ayc_buffer_played from what actually got played last frame... this needs to be done first so we
+'    know where we are!
+' 1) get where we SHOULD be from the vectrex32 tick counter, and convert that into frames (in music_target)
+' 2) compare that to where we are (in ayc_buffer_played), which is already in frames
+' 3) set wait_ time to the difference between these, which since it's constantly playing, SHOULD be only the 
+'    fractional part
+' 4) shove that into the VIA countdown register 2 that's normally used for vx refresh
+sub update_music_vbi
+  if ayc_buffer_played >= 0 
+		' wait for the dualport to have returned
+		while Peek(dualport_status) != 254
+		endwhile
+	  ' fill any used buffers with new sound data
+  	ayc_played_this_frame = Peek(dualport_return)
+		print ayc_played_this_frame
+    for i = 1 to ayc_played_this_frame
+      call play_that_music
+    next
+    ayc_buffer_played = ayc_buffer_played + ayc_played_this_frame
+  	print "Played "+ayc_played_this_frame+" full "+ayc_buffer_played
+  else
+    ayc_buffer_played = 0
+  endif
+
+
+
+  ' This is all terrible and absolutely should
+  ' NOT be fpmath, which is almost certainly slow as hell.  But it also might not be
+  ' worht optimizing.... 
+  current_tick = GetTickCount() - ayc_start_time 
+  ' where should be be _right now_...
+  music_target = (current_tick / 960.0) * player_rate
+  ' ... vs where are we right now...
+  played_to = ayc_buffer_played
+
+  ' music_target _SHOULD_ be ahead... as a general rule - the player is _triggered_ on the x.00 tick,
+  ' and so music target should, as a general rule, be above that - and we're waiting for the next whole
+  ' number to tick over....
+  wait_time = played_to - music_target
+
+  ' wait_time gets multiplied by via_wait - it should be fractional, so this should work out....
+  wait_time = wait_time * via_rate
+  wait_time = Int(wait_time)
+  if wait_time < 2
+    wait_time = 2
+  endif
+  if wait_time > 65535
+    wait_time = 65535
+  endif
+  print "music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
+
+  ' shove that wait_time in the codesptie for the VIA, so we wait for that
+  ayc_init[2] = wait_time mod 256
+  ayc_init[3] = wait_time / 256
+  
+endsub
 
 ' generate a codesprite with lda #imm, sta buffer_base+offset
 sub generate_ayc_pokedata_codesprite()
