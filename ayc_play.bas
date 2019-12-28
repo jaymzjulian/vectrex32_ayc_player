@@ -58,6 +58,7 @@ if buffer_mode = 1
   current_buffer = 0
   ' we use this being negative to represent first frame
   ayc_buffer_played = -1
+	ayc_dp_sequence = 254
   dim ayc_pokedata[max_regs*5*buffer_count]
   dim ay_output_data[buffer_count, max_regs*2]
   '--------------------------------------------------------------------'
@@ -81,25 +82,23 @@ if buffer_mode = 1
   ' vblank that we need.  it should be called as early as posisble during your dualport config
   '
   ' It also resets the dualport_return register to 0 - that register ends up containing how many frames were acutally played!
-	' we also store $ff in dualport_status, so that we know that we're currently running - we reset this at ayc_exit, to ensure that
-	' we only call the AY update code when the vectrex is idle, otherwise buffers get _very_ confused.
   '--------------------------------------------------------------------'
 	' 0000   CC 30 75               LDD   #$3075  ; this gets replaced by wait_time for first music call  
 	' 0003   FD D0 08               STD   $d008   
 	' 0006   86 00                  LDA   #0   
 	' 0008   B7 01 23               STA   $123  ; this gets replaced with dualport_return
-  ayc_init = { $cc, $30, $75, $fd, $d0, $08, $86, $00, $b7, dualport_return / 256, dualport_return mod 256, _
-			$86, $ff, $b7, dualport_status / 256, dualport_status mod 256 }
+  ayc_init = { $cc, $30, $75, $fd, $d0, $08, $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
 
   '--------------------------------------------------------------------
   ' this resets the VIA at the end, so that wait_recal doens't wait - this should be the last thing you call.
-	' note that, in VIA buffered mode, all it does is update dualport_status to $fe
+	' note that, in VIA buffered mode, all it does is update dualport_status to the current sequence semaphore
+	' without that, playback is.... weird due to locking...
   '--------------------------------------------------------------------
 	if buffer_mode_preserve_refresh = 0
-	  ayc_exit = { $86, $fe, $b7, dualport_status / 256, dualport_status mod 256, _
+	  ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
 								 $cc, $1, $0, $fd, $d0, $08}
 	else
-	  ayc_exit = { $86, $fe, $b7, dualport_status / 256, dualport_status mod 256 }
+	  ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256 }
 	endif
 
 endif
@@ -154,12 +153,6 @@ while controls[1,3] = 0
     call play_that_music
   endif
   controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
-	' safety: wait until we do stuff, since we have _no other code_.  you probably don't
-	' need this in teh real world...
-  if buffer_mode = 1
-		while Peek(dualport_status) != 255
-		endwhile
-	endif
 endwhile
 
 
@@ -175,16 +168,20 @@ endwhile
 sub update_music_vbi
   if ayc_buffer_played >= 0 
 		' wait for the dualport to have returned
-		while Peek(dualport_status) != 254
+		' why is this a sequence?  because if not, bad things happen in the bathroom...
+		' once we've hit it, we update the codesprite to chang the sequence for the next run, so that we
+		' don't lose track
+		while Peek(dualport_status) != ayc_dp_sequence
 		endwhile
+		ayc_dp_sequence = (ayc_dp_sequence + 1) mod 256
+		ayc_exit[2] = ayc_dp_sequence
 	  ' fill any used buffers with new sound data
   	ayc_played_this_frame = Peek(dualport_return)
-		print ayc_played_this_frame
     for i = 1 to ayc_played_this_frame
       call play_that_music
     next
     ayc_buffer_played = ayc_buffer_played + ayc_played_this_frame
-  	print "Played "+ayc_played_this_frame+" full "+ayc_buffer_played
+  	'print "Played "+ayc_played_this_frame+" full "+ayc_buffer_played
   else
     ayc_buffer_played = 0
   endif
@@ -214,7 +211,7 @@ sub update_music_vbi
   if wait_time > 65535
     wait_time = 65535
   endif
-  print "music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
+  'print "AYC: music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
 
   ' shove that wait_time in the codesptie for the VIA, so we wait for that
   ayc_init[2] = wait_time mod 256
