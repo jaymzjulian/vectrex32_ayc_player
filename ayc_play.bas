@@ -148,7 +148,6 @@ if demo_mode = 1
   dim textlist[2, 3]
   textlist = {{200, -150, "50HZ AYC PLAYER DEMO"},{200, -170, "FPS: "}}
   call ReturnToOriginSprite()
-  call ScaleSprite(32)
   call TextListSprite(textlist)
   if buffer_mode = 1
     call ReturnToOriginSprite()
