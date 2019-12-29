@@ -87,7 +87,7 @@ if buffer_mode = 1
   ' we acutally shove the main playcode into vectrex ram to try and save ourselves some dpram....
   ayc_playcode = { $12 }
   internal_ayc_playcode = { _
-     $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $28, _
+     $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $21, _
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
      $cc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
      $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
@@ -121,6 +121,7 @@ if buffer_mode = 1
 	' second line is: ldd #$100, std $d008 (remember: endian is reversed)
 	' which should set timer b to "almost nothing"
   ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
+                $1a, $10, _
                 $86, $80, $b7, $d0, $0e, _
 	  					 $cc, $1, $0, $fd, $d0, $08}
 
