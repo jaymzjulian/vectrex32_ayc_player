@@ -56,6 +56,8 @@ if buffer_mode = 1
   buffer_base = $c884
   ' buffers are 14*2 + 1 bytes long
   buffer_end = buffer_base + (buffer_count - 1) * 29
+  ' add an extra buffer_end for this, because of that way it's calculated...
+  player_code_loc = buffer_end + 29
 
 	game_frame_count = 0
 
@@ -79,13 +81,17 @@ if buffer_mode = 1
   ' second line: call sound_bytes_x, increment dualport return
   ' third line: write to VIA for next countdown timer
   ' fourth line: incremener buffer
-  ayc_playcode = { _
+  ' then finally an RTS ;)
+  '
+  ' we acutally shove the main playcode into vectrex ram to try and save ourselves some dpram....
+  ayc_playcode = { $bd, player_code_loc / 256, player_code_loc mod 256 }
+  internal_ayc_playcode = { _
 		 $86, $20, $b5, $d0, $0d, $27, $21, _		 
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
      $fc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
      $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
-                        $2f, $03, $cc, buffer_base / 256, buffer_base mod 256, $fd, buffer_location / 256, buffer_location mod 256 _
-      }
+                        $2f, $03, $cc, buffer_base / 256, buffer_base mod 256, $fd, buffer_location / 256, buffer_location mod 256, _
+      $39 }
 
   '--------------------------------------------------------------------'
   ' this sets up the timer we need to keep time on the VX side...
@@ -137,10 +143,11 @@ endif
 ' show some display.... obviously this is my tes stuff, you'd drop this for
 ' your own code, BUT...
 if demo_mode = 1
+  dim textlist[2, 3]
+  textlist = {{200, -150, "50HZ AYC PLAYER DEMO"},{200, -170, "FPS: "}}
   call ReturnToOriginSprite()
   call ScaleSprite(32)
-  call MoveSprite(128, 200)
-  call TextSprite("AYC PLAYER TEST")
+  call TextListSprite(textlist)
   call ReturnToOriginSprite()
   call ScaleSprite(32)
   if buffer_mode = 1
@@ -162,7 +169,15 @@ if buffer_mode = 1
 endif
 
 ayc_start_time = GetTickCount()
+loop_start = 0
+' globalize this ;)
+ayc_tick = 0
 while controls[1,3] = 0
+  if demo_mode = 1
+    fps = 960.0 / (GetTickCount() - loop_start)
+    textlist[2, 3] = "FPS: "+fps+" AYC: "+ayc_tick+"T"
+    loop_start = GetTickCount()
+  endif
   ' if you're using buffered mode, you should call this to update the initial timer
   ' vs the tick counter
 	'
@@ -174,7 +189,6 @@ while controls[1,3] = 0
   else
     call play_that_music
   endif
-
   controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
 endwhile
 
@@ -189,6 +203,7 @@ endwhile
 '    fractional part
 ' 4) shove that into the VIA countdown register 2 that's normally used for vx refresh
 sub update_music_vbi
+  ayc_tick = GetTickCount()
   ayc_played_this_frame = 0
   if ayc_buffer_played >= 0 
 		' wait for the dualport to have returned
@@ -197,6 +212,8 @@ sub update_music_vbi
 		' don't lose track	
 		while Peek(dualport_status) != ayc_dp_sequence
 		endwhile
+    ' reset benchmark counter once we've synced ;)
+    ayc_tick = GetTickCount()
 		ayc_dp_sequence = (ayc_dp_sequence + 4) mod 256
 		ayc_exit[2] = ayc_dp_sequence
 	  ' fill any used buffers with new sound data
@@ -243,12 +260,13 @@ sub update_music_vbi
   if wait_time > 65535
     wait_time = 65535
   endif
-  print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
+  'print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
 
   ' shove that wait_time in the codesptie for the VIA, so we wait for that
   ayc_init[2] = wait_time mod 256
   ayc_init[3] = wait_time / 256
-  
+  ' benchmark
+  ayc_tick = GetTickCount() - ayc_tick
 endsub
 
 ' generate a codesprite with lda #imm, sta buffer_base+offset
@@ -300,6 +318,9 @@ sub load_and_init(filename)
     call TextSprite("AYC Loader")
     call pokeRAM(buffer_location, (buffer_base / 256) mod 256)
     call pokeRAM(buffer_location+1, buffer_base mod 256)
+    for j = 1 to Ubound(internal_ayc_playcode)
+      call pokeRAM(player_code_loc+(j-1), internal_ayc_playcode[j])
+    next
     addr = buffer_base
     for b = 1 to buffer_count
       for reg = 1 to 14
