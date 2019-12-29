@@ -6,30 +6,35 @@ via_int_flags = $d00d
 ; standard AY
 buffer_size = 29
 buffer_start = $c884
+buffer_end = $c885
 num_buffers = 5
-buffer_end = buffer_start + num_buffers*buffer_size
+
+  ; irq entry: update VIA and return fast so we dont
+  ; hurt lines
+  ldd #$1234
+  std $d008
+  inc $2345
+  rti
+  
+  ; check if our flag is set
+  lda $2345
+  cmpa #0
+  beq no_play
+  dec $2345
+  
   ; check if we should just skip because we are out of buffers...
   lda $258
   cmpa #num_buffers
   beq no_play
-  ; check if we're ready to execute
-  ; we only do this in buffered mode, but we'll turn on/off this
-  ; code on the v32 side
-  lda #$20
-  bita VIA_int_flags
-  beq no_play
   
+
   ; update the buffer
   ldu buffer_base
   jsr Sound_Bytes_x
   ; increment the dualport return
   inc $258
   
-  ; reset the timer
-  ldd #$1234
-  std $d008
-
-;  ; point to next buffer
+  ;  ; point to next buffer
   ldd buffer_base
   addd #buffer_size
   ; if we're at the top of the buffer, go back... it's a loop
