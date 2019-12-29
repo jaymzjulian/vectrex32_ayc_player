@@ -85,15 +85,14 @@ if buffer_mode = 1
   ' then finally an RTS ;)
   '
   ' we acutally shove the main playcode into vectrex ram to try and save ourselves some dpram....
-  ayc_playcode = { $bd, player_code_loc / 256, player_code_loc mod 256 }
+  ayc_playcode = { $12 }
   internal_ayc_playcode = { _
      $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $28, _
-		 $86, $20, $b5, $d0, $0d, $27, $21, _		 
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
      $cc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
      $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
                         $2f, $03, $cc, buffer_base / 256, buffer_base mod 256, $fd, buffer_location / 256, buffer_location mod 256, _
-      $39 }
+     $3b }
 
   '--------------------------------------------------------------------'
   ' this sets up the timer we need to keep time on the VX side...
@@ -106,7 +105,11 @@ if buffer_mode = 1
 	' 0003   FD D0 08               STD   $d008   
 	' 0006   86 00                  LDA   #0   
 	' 0008   B7 01 23               STA   $123  ; this gets replaced with dualport_return
-  ayc_init = { $cc, $30, $75, $fd, $d0, $08, $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
+  ayc_init = { $86, $00, $b7, dualport_return / 256, dualport_return mod 256, _
+              $1c, $ef, _
+              $86, $a0, $b7, $d0, $0e, _
+              $cc, $0, $2, $fd, $d0, $08 }
+  'ayc_init = { $cc, $30, $75, $fd, $d0, $08, $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
 
   '--------------------------------------------------------------------
   ' this resets the VIA at the end, so that wait_recal doens't wait - this should be the last thing you call.
@@ -114,9 +117,11 @@ if buffer_mode = 1
 	' without that, playback is.... weird due to locking...
   '--------------------------------------------------------------------
   ' first line is: lda #sequence, sta $dualport_status
+  ' in betten turn of finterrupts again
 	' second line is: ldd #$100, std $d008 (remember: endian is reversed)
 	' which should set timer b to "almost nothing"
   ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
+                $86, $80, $b7, $d0, $0e, _
 	  					 $cc, $1, $0, $fd, $d0, $08}
 
 endif
@@ -264,8 +269,8 @@ sub update_music_vbi
   print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
 
   ' shove that wait_time in the codesptie for the VIA, so we wait for that
-  ayc_init[2] = wait_time mod 256
-  ayc_init[3] = wait_time / 256
+  'ayc_init[2] = wait_time mod 256
+  'ayc_init[3] = wait_time / 256
   ' benchmark
   ayc_tick = GetTickCount() - ayc_tick
 endsub
@@ -319,6 +324,10 @@ sub load_and_init(filename)
     call TextSprite("AYC Loader")
     call pokeRAM(buffer_location, (buffer_base / 256) mod 256)
     call pokeRAM(buffer_location+1, buffer_base mod 256)
+    ' set up IRQ jmp
+    call pokeRAM($cbf8, $7e)
+    call pokeRAM($cbf9, (player_code_loc / 256) mod 256)
+    call pokeRAM($cbfa, player_code_loc mod 256)
     for j = 1 to Ubound(internal_ayc_playcode)
       call pokeRAM(player_code_loc+(j-1), internal_ayc_playcode[j])
     next
