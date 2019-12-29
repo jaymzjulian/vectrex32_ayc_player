@@ -63,6 +63,7 @@ if buffer_mode = 1
 
   ' below here is not, for the most part, user servicable :)
   via_rate = 1500000 / player_rate 
+  via_rate_adj = (via_rate * 80) / 100
   tick_rate = 960 / player_rate
   print "AYC: VIA Rate is "+via_rate+" cycles"
   print "AYC: Tick Rate is "+tick_rate+" cycles"
@@ -90,7 +91,7 @@ if buffer_mode = 1
      $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $28, _
 		 $86, $20, $b5, $d0, $0d, $27, $21, _		 
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
-     $cc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
+     $cc, via_rate_adj mod 256, via_rate_adj / 256, $fd, $d0, $08, _
      $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
                         $2f, $03, $cc, buffer_base / 256, buffer_base mod 256, $fd, buffer_location / 256, buffer_location mod 256, _
       $39 }
