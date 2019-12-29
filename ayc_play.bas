@@ -146,7 +146,7 @@ endif
 ' your own code, BUT...
 if demo_mode = 1
   dim textlist[2, 3]
-  textlist = {{200, -150, "50HZ AYC PLAYER DEMO"},{200, -170, "FPS: "}}
+  textlist = {{200, -150, "50HZ AYC"},{200, -170, "FPS: "}}
   call ReturnToOriginSprite()
   call TextListSprite(textlist)
   if buffer_mode = 1
@@ -632,6 +632,7 @@ sub  rose()
     { DrawTo , -132.032152515 , -14.7218030324 }, _
     { DrawTo , -117.876984871 , 21.2530560216 } _
   })
+  call CodeSprite(ayc_playcode)
   call ReturnToOriginSprite()
   call LinesSprite({ _
     {MoveTo, -117.876984871 , 21.2530560216 }, _
@@ -769,6 +770,7 @@ sub  rose()
     { DrawTo , -25.4495887543 , -136.882719657 }, _
     { DrawTo , -22.4655316816 , -148.653153277 } _
   })
+  call CodeSprite(ayc_playcode)
   call ReturnToOriginSprite()
   call LinesSprite({ _
     {MoveTo, -22.4655316816 , -148.653153277 }, _
@@ -906,6 +908,7 @@ sub  rose()
     { DrawTo , 40.3537305853 , 62.196061521 }, _
     { DrawTo , 32.5821047798 , 54.1872747251 } _
   })
+  call CodeSprite(ayc_playcode)
   call ReturnToOriginSprite()
   call LinesSprite({ _
     {MoveTo, 32.5821047798 , 54.1872747251 }, _
