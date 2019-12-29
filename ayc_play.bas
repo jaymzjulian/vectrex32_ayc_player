@@ -77,6 +77,7 @@ if buffer_mode = 1
   ' the listing for this is an other file within the github, but I built it with 
   ' asm80.com :)
   '--------------------------------------------------------------------'
+  ' zeroth line: overflow check :)
   ' first line: check via
   ' second line: call sound_bytes_x, increment dualport return
   ' third line: write to VIA for next countdown timer
@@ -86,6 +87,7 @@ if buffer_mode = 1
   ' we acutally shove the main playcode into vectrex ram to try and save ourselves some dpram....
   ayc_playcode = { $bd, player_code_loc / 256, player_code_loc mod 256 }
   internal_ayc_playcode = { _
+     $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $28, _
 		 $86, $20, $b5, $d0, $0d, $27, $21, _		 
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
      $fc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
@@ -148,9 +150,9 @@ if demo_mode = 1
   call ReturnToOriginSprite()
   call ScaleSprite(32)
   call TextListSprite(textlist)
-  call ReturnToOriginSprite()
-  call ScaleSprite(32)
   if buffer_mode = 1
+    call ReturnToOriginSprite()
+    call ScaleSprite(32)
     call rose()
   endif
 endif
@@ -260,7 +262,7 @@ sub update_music_vbi
   if wait_time > 65535
     wait_time = 65535
   endif
-  'print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
+  print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
 
   ' shove that wait_time in the codesptie for the VIA, so we wait for that
   ayc_init[2] = wait_time mod 256
