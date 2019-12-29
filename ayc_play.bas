@@ -35,7 +35,9 @@ max_regs = 14
 if buffer_mode = 1
   '--------------------------------------------------------------------'
   ' This is only required if buffer_mode is set to 1 - you can save a few byres of ram by excluding it if you want, otherwise
-  ' number of buffers
+  ' number of buffers.  
+  '
+  ' Currently, we non-optionally consume 70 bytes of dpram per buffer - so 4 buffers would be 280 bytes of dpram. 
   buffer_count = 4
   ' rate of playback - 50hz by default...
   player_rate = 50
