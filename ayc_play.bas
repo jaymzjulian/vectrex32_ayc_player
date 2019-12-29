@@ -270,8 +270,8 @@ sub update_music_vbi
   print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
 
   ' shove that wait_time in the codesptie for the VIA, so we wait for that
-  'ayc_init[2] = wait_time mod 256
-  'ayc_init[3] = wait_time / 256
+  ayc_init[14] = wait_time mod 256
+  ayc_init[15] = wait_time / 256
   ' benchmark
   ayc_tick = GetTickCount() - ayc_tick
 endsub
