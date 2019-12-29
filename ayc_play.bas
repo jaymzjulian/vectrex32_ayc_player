@@ -57,7 +57,9 @@ if buffer_mode = 1
   ' buffers are 14*2 + 1 bytes long
   buffer_end = buffer_base + (buffer_count - 1) * 29
   ' add an extra buffer_end for this, because of that way it's calculated...
-  player_code_loc = buffer_end + 29
+  flag_loc = buffer_end + 29
+  player_code_loc = flag_loc + 2
+  player_jmp = player_code_loc + 12
 
 	game_frame_count = 0
 
@@ -85,14 +87,18 @@ if buffer_mode = 1
   ' then finally an RTS ;)
   '
   ' we acutally shove the main playcode into vectrex ram to try and save ourselves some dpram....
-  ayc_playcode = { $12 }
+  ayc_playcode = { $bd, player_jmp / 256, player_jmp mod 256 }
   internal_ayc_playcode = { _
-     $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $21, _
-     $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
      $cc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
+     $86, $01, $b7, flag_loc / 256, flag_loc mod 256, _
+     $3b, _
+     $b6, flag_loc / 256, flag_loc mod 256, $81, $00, $27, $22, _
+     $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $1b, _
+     $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
      $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
                         $2f, $03, $cc, buffer_base / 256, buffer_base mod 256, $fd, buffer_location / 256, buffer_location mod 256, _
-     $3b }
+     $86, $00, $b7, flag_loc / 256, flag_loc mod 256, _
+     $39 }
 
   '--------------------------------------------------------------------'
   ' this sets up the timer we need to keep time on the VX side...
@@ -106,6 +112,7 @@ if buffer_mode = 1
 	' 0006   86 00                  LDA   #0   
 	' 0008   B7 01 23               STA   $123  ; this gets replaced with dualport_return
   ayc_init = { $86, $00, $b7, dualport_return / 256, dualport_return mod 256, _
+               $86, $00, $b7, flag_loc / 256, flag_loc mod 256, _
               $1c, $ef, _
               $86, $a0, $b7, $d0, $0e, _
               $cc, $0, $2, $fd, $d0, $08 }
@@ -182,7 +189,7 @@ ayc_tick = 0
 while controls[1,3] = 0
   if demo_mode = 1
     fps = 960.0 / (GetTickCount() - loop_start)
-    textlist[2, 3] = "FPS: "+fps+" AYC: "+ayc_tick+"T"
+    textlist[2, 3] = "FPS:"+Int(fps)+" AYC:"+ayc_tick
     loop_start = GetTickCount()
   endif
   ' if you're using buffered mode, you should call this to update the initial timer
@@ -270,8 +277,8 @@ sub update_music_vbi
   print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
 
   ' shove that wait_time in the codesptie for the VIA, so we wait for that
-  ayc_init[14] = wait_time mod 256
-  ayc_init[15] = wait_time / 256
+  ayc_init[19] = wait_time mod 256
+  ayc_init[20] = wait_time / 256
   ' benchmark
   ayc_tick = GetTickCount() - ayc_tick
 endsub
@@ -642,7 +649,6 @@ sub  rose()
     { DrawTo , -132.032152515 , -14.7218030324 }, _
     { DrawTo , -117.876984871 , 21.2530560216 } _
   })
-  call CodeSprite(ayc_playcode)
   call ReturnToOriginSprite()
   call LinesSprite({ _
     {MoveTo, -117.876984871 , 21.2530560216 }, _
@@ -780,7 +786,6 @@ sub  rose()
     { DrawTo , -25.4495887543 , -136.882719657 }, _
     { DrawTo , -22.4655316816 , -148.653153277 } _
   })
-  call CodeSprite(ayc_playcode)
   call ReturnToOriginSprite()
   call LinesSprite({ _
     {MoveTo, -22.4655316816 , -148.653153277 }, _
@@ -918,7 +923,6 @@ sub  rose()
     { DrawTo , 40.3537305853 , 62.196061521 }, _
     { DrawTo , 32.5821047798 , 54.1872747251 } _
   })
-  call CodeSprite(ayc_playcode)
   call ReturnToOriginSprite()
   call LinesSprite({ _
     {MoveTo, 32.5821047798 , 54.1872747251 }, _
