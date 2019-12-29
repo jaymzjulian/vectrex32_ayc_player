@@ -59,7 +59,7 @@ if buffer_mode = 1
   ' add an extra buffer_end for this, because of that way it's calculated...
   flag_loc = buffer_end + 29
   player_code_loc = flag_loc + 2
-  player_jmp = player_code_loc + 12
+  player_jmp = player_code_loc + 10
 
 	game_frame_count = 0
 
@@ -90,14 +90,14 @@ if buffer_mode = 1
   ayc_playcode = { $bd, player_jmp / 256, player_jmp mod 256 }
   internal_ayc_playcode = { _
      $cc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
-     $86, $01, $b7, flag_loc / 256, flag_loc mod 256, _
+     $7c, flag_loc / 256, flag_loc mod 256, _
      $3b, _
-     $b6, flag_loc / 256, flag_loc mod 256, $81, $00, $27, $22, _
+     $b6, flag_loc / 256, flag_loc mod 256, $81, $00, $27, $25, _
+     $7a, flag_loc / 256, flag_loc mod 256, _
      $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $1b, _
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
      $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
                         $2f, $03, $cc, buffer_base / 256, buffer_base mod 256, $fd, buffer_location / 256, buffer_location mod 256, _
-     $86, $00, $b7, flag_loc / 256, flag_loc mod 256, _
      $39 }
 
   '--------------------------------------------------------------------'
