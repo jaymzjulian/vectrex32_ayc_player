@@ -8,8 +8,12 @@
 ' if this is 1, we call Sound, if this is 0, we call FillBuffer, and
 ' play via the codesprite
 buffer_mode = 1
+
 ' do we wait for the next frame to be "due" before we continue?
 buffer_mode_preserve_refresh = 0
+
+' show the low framerate demo - this will show a set of sprites to demonstrate
+' playing 50fps music when running at sub-25fps vectrex rounds
 demo_mode = 1
 
 
@@ -76,7 +80,7 @@ if buffer_mode = 1
   ' third line: write to VIA for next countdown timer
   ' fourth line: incremener buffer
   ayc_playcode = { _
-		 $86, $20, $b5, $d0, $0d, $27, $1b, _		 
+		 $86, $20, $b5, $d0, $0d, $27, $21, _		 
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
      $fc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
      $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
@@ -277,7 +281,6 @@ sub generate_ayc_pokedata_codesprite()
 endsub
 
 sub fill_buffer(outregs)
-  'print "fill:",current_buffer
   for r = 1 to 14
     ' 5 bytes per "reg"
     ' our write is at +6 
