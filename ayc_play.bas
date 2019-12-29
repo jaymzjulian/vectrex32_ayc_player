@@ -80,7 +80,7 @@ if buffer_mode = 1
   ' zeroth line: overflow check :)
   ' first line: check via
   ' second line: call sound_bytes_x, increment dualport return
-  ' third line: write to VIA for next countdown timer
+  ' third line: write to VIA for next countdown timer (remember: little endian)
   ' fourth line: incremener buffer
   ' then finally an RTS ;)
   '
@@ -90,7 +90,7 @@ if buffer_mode = 1
      $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $28, _
 		 $86, $20, $b5, $d0, $0d, $27, $21, _		 
      $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
-     $fc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
+     $cc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
      $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
                         $2f, $03, $cc, buffer_base / 256, buffer_base mod 256, $fd, buffer_location / 256, buffer_location mod 256, _
       $39 }

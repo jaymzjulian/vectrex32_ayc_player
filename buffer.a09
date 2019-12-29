@@ -8,7 +8,10 @@ buffer_size = 29
 buffer_start = $c884
 num_buffers = 5
 buffer_end = buffer_start + num_buffers*buffer_size
-
+  ; check if we should just skip because we are out of buffers...
+  lda $258
+  cmpa #num_buffers
+  beq no_play
   ; check if we're ready to execute
   ; we only do this in buffered mode, but we'll turn on/off this
   ; code on the v32 side
@@ -23,7 +26,7 @@ buffer_end = buffer_start + num_buffers*buffer_size
   inc $258
   
   ; reset the timer
-  ldd $1234
+  ldd #$1234
   std $d008
 
 ;  ; point to next buffer
@@ -38,3 +41,4 @@ buffer_good:
   std buffer_base
 no_play:
   ; also update timing pointer!
+  rts
