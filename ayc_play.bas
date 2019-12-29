@@ -79,12 +79,20 @@ if buffer_mode = 1
   ' the listing for this is an other file within the github, but I built it with 
   ' asm80.com :)
   '--------------------------------------------------------------------'
-  ' zeroth line: overflow check :)
-  ' first line: check via
-  ' second line: call sound_bytes_x, increment dualport return
-  ' third line: write to VIA for next countdown timer (remember: little endian)
-  ' fourth line: incremener buffer
+  ' there are two bits of code here:
+  ' a) the irq hander - this just sets a flag, to avoid messing up line drawing
+  ' b) the actual player code itself - this is called outside, so that we know we're not drawing at the time
+  '
+  ' lines 1-3 are the irq handler
+  ' rest is plaer
+  '
+  ' first line: check if we play ;)
+  ' then next overflow check
+  ' thjen  call sound_bytes_x, increment dualport return
+  ' then incremener buffer pointer
   ' then finally an RTS ;)
+  '
+  ' orig code is in buffer.a09 with comments
   '
   ' we acutally shove the main playcode into vectrex ram to try and save ourselves some dpram....
   ayc_playcode = { $bd, player_jmp / 256, player_jmp mod 256 }
@@ -107,10 +115,10 @@ if buffer_mode = 1
   '
   ' It also resets the dualport_return register to 0 - that register ends up containing how many frames were acutally played!
   '--------------------------------------------------------------------'
-	' 0000   CC 30 75               LDD   #$3075  ; this gets replaced by wait_time for first music call  
-	' 0003   FD D0 08               STD   $d008   
-	' 0006   86 00                  LDA   #0   
-	' 0008   B7 01 23               STA   $123  ; this gets replaced with dualport_return
+  ' 1) clear dualport_return
+  ' 2) clear play flag
+  ' 3) 
+  ' 3) set timer b to the remaining time untilk music
   ayc_init = { $86, $00, $b7, dualport_return / 256, dualport_return mod 256, _
                $86, $00, $b7, flag_loc / 256, flag_loc mod 256, _
               $1c, $ef, _
