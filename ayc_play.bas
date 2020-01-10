@@ -9,13 +9,15 @@
 ' play via the codesprite
 buffer_mode = 1
 
+' should we use IRQ based timing, or Poke based timing?
+irq_mode = 0
+
 ' do we wait for the next frame to be "due" before we continue?
 buffer_mode_preserve_refresh = 0
 
 ' show the low framerate demo - this will show a set of sprites to demonstrate
 ' playing 50fps music when running at sub-25fps vectrex rounds
 demo_mode = 1
-
 
 dim comp_buffer[14]
 dim cursor[14]
@@ -49,6 +51,7 @@ if buffer_mode = 1
   ' but is.... probably enough?
   dualport_return = 8
   dualport_status = 9
+  dualport_flag = 10
   ' you'll need to allow for max_regs*buffer_count worth of iram at this location 
   ' if this is the only weird thing you're using, c882 should be fine.  c880 is better, but doens't work
   ' on all v32 firmware revisions right now....
@@ -57,7 +60,12 @@ if buffer_mode = 1
   ' buffers are 14*2 + 1 bytes long
   buffer_end = buffer_base + (buffer_count - 1) * 29
   ' add an extra buffer_end for this, because of that way it's calculated...
-  flag_loc = buffer_end + 29
+  if irq_mode = 1
+    flag_loc = buffer_end + 29
+  else
+    flag_loc = dualport_flag
+  endif
+  ayc_ticked = 0
   player_code_loc = flag_loc + 2
   player_jmp = player_code_loc + 10
 
@@ -119,11 +127,17 @@ if buffer_mode = 1
   ' 2) clear play flag
   ' 3) 
   ' 3) set timer b to the remaining time untilk music
+  if irq_mode = 1
   ayc_init = { $86, $00, $b7, dualport_return / 256, dualport_return mod 256, _
                $86, $00, $b7, flag_loc / 256, flag_loc mod 256, _
               $1c, $ef, _
               $86, $a0, $b7, $d0, $0e, _
               $cc, $0, $2, $fd, $d0, $08 }
+  else
+    ' in non-irq mode, we ignore the code that actually sets upo the IRQ - we're going
+    ' to push in data a different way...
+    ayc_init = { $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
+  endif
   'ayc_init = { $cc, $30, $75, $fd, $d0, $08, $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
 
   '--------------------------------------------------------------------
@@ -214,6 +228,16 @@ while controls[1,3] = 0
   controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
 endwhile
 
+sub ayc_update_timer
+  current_tick = GetTickCount() - ayc_start_time 
+  music_target = (current_tick / 960.0) * player_rate + 1
+  to_tick = int(music_target) - ayc_ticked
+  if to_tick > 0
+    ayc_ticked = ayc_ticked + 1
+    call Poke(flag_loc, to_tick)
+    'print "tick " +to_tick+" from "+music_target+" vs "+ayc_ticked
+  endif
+endsub
 
 ' this function is only used in buffer mode :)
 ' the algorythm is:
@@ -233,7 +257,11 @@ sub update_music_vbi
 		' once we've hit it, we update the codesprite to chang the sequence for the next run, so that we
 		' don't lose track	
 		while Peek(dualport_status) != ayc_dp_sequence
+      if irq_mode = 0
+        call ayc_update_timer
+      endif
 		endwhile
+    'print "endframe"
     ' reset benchmark counter once we've synced ;)
     ayc_tick = GetTickCount()
 		ayc_dp_sequence = (ayc_dp_sequence + 4) mod 256
@@ -258,35 +286,39 @@ sub update_music_vbi
 	endif
 
 
-  ' This is all terrible and absolutely should
-  ' NOT be fpmath, which is almost certainly slow as hell.  But it also might not be
-  ' worht optimizing.... 
-  current_tick = GetTickCount() - ayc_start_time 
-  ' where should be for the _next_ frame
-  music_target = (current_tick / 960.0) * player_rate + 1
-  ' ... vs where are we right now...
-  played_to = ayc_buffer_played
+  ' fix the IRQ timing
+  if irq_mode = 1
+    ' This is all terrible and absolutely should
+    ' NOT be fpmath, which is almost certainly slow as hell.  But it also might not be
+    ' worht optimizing.... 
+    current_tick = GetTickCount() - ayc_start_time 
+    ' where should be for the _next_ frame
+    music_target = (current_tick / 960.0) * player_rate + 1
+    ' ... vs where are we right now...
+    played_to = ayc_buffer_played
 
 
-  ' music_target _SHOULD_ be ahead... as a general rule - the player is _triggered_ on the x.00 tick,
-  ' and so music target should, as a general rule, be above that - and we're waiting for the next whole
-  ' number to tick over....
-  wait_time =  played_to - music_target
+    ' music_target _SHOULD_ be ahead... as a general rule - the player is _triggered_ on the x.00 tick,
+    ' and so music target should, as a general rule, be above that - and we're waiting for the next whole
+    ' number to tick over....
+    wait_time =  played_to - music_target
 
-  ' wait_time gets multiplied by via_wait - it should be fractional, so this should work out....
-  wait_time = wait_time * via_rate
-  wait_time = Int(wait_time)
-  if wait_time < 2
-    wait_time = 2
+    ' wait_time gets multiplied by via_wait - it should be fractional, so this should work out....
+    wait_time = wait_time * via_rate
+    wait_time = Int(wait_time)
+    if wait_time < 2
+      wait_time = 2
+    endif
+    if wait_time > 65535
+      wait_time = 65535
+    endif
+    
+    print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
+
+    ' shove that wait_time in the codesptie for the VIA, so we wait for that
+    ayc_init[19] = wait_time mod 256
+    ayc_init[20] = wait_time / 256
   endif
-  if wait_time > 65535
-    wait_time = 65535
-  endif
-  print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
-
-  ' shove that wait_time in the codesptie for the VIA, so we wait for that
-  ayc_init[19] = wait_time mod 256
-  ayc_init[20] = wait_time / 256
   ' benchmark
   ayc_tick = GetTickCount() - ayc_tick
 endsub
@@ -344,6 +376,7 @@ sub load_and_init(filename)
     call pokeRAM($cbf8, $7e)
     call pokeRAM($cbf9, (player_code_loc / 256) mod 256)
     call pokeRAM($cbfa, player_code_loc mod 256)
+    call pokeRAM(flag_loc, 0)
     for j = 1 to Ubound(internal_ayc_playcode)
       call pokeRAM(player_code_loc+(j-1), internal_ayc_playcode[j])
     next
