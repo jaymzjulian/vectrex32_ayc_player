@@ -238,7 +238,7 @@ sub ayc_update_timer
   to_tick = int(music_target) - ayc_ticked
   if to_tick > 0
     ayc_ticked = ayc_ticked + 1
-    call Poke(flag_loc, to_tick)
+    call Poke(flag_loc, Peek(flag_loc)+1)
     'print "tick " +to_tick+" from "+music_target+" vs "+ayc_ticked
   endif
 endsub
