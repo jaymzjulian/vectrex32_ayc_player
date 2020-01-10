@@ -149,10 +149,14 @@ if buffer_mode = 1
   ' in betten turn of finterrupts again
 	' second line is: ldd #$100, std $d008 (remember: endian is reversed)
 	' which should set timer b to "almost nothing"
-  ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
+  if irq_mode = 1
+    ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
                 $1a, $10, _
                 $86, $80, $b7, $d0, $0e, _
 	  					 $cc, $1, $0, $fd, $d0, $08}
+  else
+    ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256 }
+  endif
 
 endif
 
