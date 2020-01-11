@@ -272,6 +272,9 @@ sub update_music_vbi
 		ayc_exit[2] = ayc_dp_sequence
 	  ' fill any used buffers with new sound data
   	ayc_played_this_frame = Peek(dualport_return)
+    if ayc_played_this_frame == buffer_count
+      print "WARN: AYC buffer limit hit - consider increasing buffer size..."
+    endif
     for i = 1 to ayc_played_this_frame
       call play_that_music
     next
