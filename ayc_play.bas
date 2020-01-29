@@ -66,7 +66,7 @@ if buffer_mode = 1
     flag_loc = dualport_flag
   endif
   ayc_ticked = 0
-  player_code_loc = flag_loc + 2
+  player_code_loc = buffer_end + 31
   player_jmp = player_code_loc + 10
 
 	game_frame_count = 0
