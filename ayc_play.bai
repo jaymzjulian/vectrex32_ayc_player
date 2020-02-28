@@ -183,21 +183,6 @@ if buffer_mode = 1
   endif
 endif
 
-' set the framerate to 50fps, since that is what most AYC tracks are
-' in buffer mode, we set it just as fast as we can update it - our buffer code
-' will actually cause this to be ignored anyhow....
-if buffer_mode = 1 and buffer_mode_preserve_refresh = 0
-  call SetFrameRate(150)
-else
-  call SetFrameRate(50)
-endif
-print GetFrameRate()
-
-' load the AYC
-call load_and_init("switchblade.ayc")
-
-controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
-
 sub ayc_update_timer
   if ayc_start_time == 0
     ayc_start_time = GetTickCount()
