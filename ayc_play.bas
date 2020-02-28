@@ -39,19 +39,22 @@ dim ay_data_length
 max_regs = 14
 
 if buffer_mode = 1
+  ' This is almost certainly wrong/destructive!
+  ' but is.... probably enough?
+  dualport_return = 1
+  dualport_status = 2
+  dualport_flag = 3
+  ayc_buffer_overflow = false
   '--------------------------------------------------------------------'
   ' This is only required if buffer_mode is set to 1 - you can save a few byres of ram by excluding it if you want, otherwise
   ' number of buffers.  
   '
   ' Currently, we non-optionally consume 70 bytes of dpram per buffer - so 4 buffers would be 280 bytes of dpram. 
-  buffer_count = 4
+  lframe = 0
+  buffer_count = 6
+
   ' rate of playback - 50hz by default...
   player_rate = 50
-  ' This is almost certainly wrong/destructive!
-  ' but is.... probably enough?
-  dualport_return = 8
-  dualport_status = 9
-  dualport_flag = 10
   ' you'll need to allow for max_regs*buffer_count worth of iram at this location 
   ' if this is the only weird thing you're using, c882 should be fine.  c880 is better, but doens't work
   ' on all v32 firmware revisions right now....
@@ -68,6 +71,8 @@ if buffer_mode = 1
   ayc_ticked = 0
   player_code_loc = buffer_end + 31
   player_jmp = player_code_loc + 10
+
+  print "player_jmp: "+player_jmp+" player_code_loc: "+player_code_loc
 
 	game_frame_count = 0
 
@@ -103,17 +108,31 @@ if buffer_mode = 1
   ' orig code is in buffer.a09 with comments
   '
   ' we acutally shove the main playcode into vectrex ram to try and save ourselves some dpram....
+  ' see the .lst file for disas
   ayc_playcode = { $bd, player_jmp / 256, player_jmp mod 256 }
   internal_ayc_playcode = { _
-     $cc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _
+     $cc, via_rate mod 256, via_rate / 256, $fd, $d0, $08, _ 
      $7c, flag_loc / 256, flag_loc mod 256, _
      $3b, _
-     $b6, flag_loc / 256, flag_loc mod 256, $81, $00, $27, $25, _
-     $7a, flag_loc / 256, flag_loc mod 256, _
-     $b6, dualport_return / 256, dualport_return mod 256, $81, buffer_count, $27, $1b, _
-     $FE, buffer_location / 256, buffer_location mod 256, $BD, $F2, $7D, $7c, dualport_return / 256, dualport_return mod 256, _
-     $fc, buffer_location / 256, buffer_location mod 256, $c3, $00, $1d, $10, $83, buffer_end / 256, buffer_end mod 256,  _
-                        $2f, $03, $cc, buffer_base / 256, buffer_base mod 256, $fd, buffer_location / 256, buffer_location mod 256, _
+     $b6, flag_loc / 256, flag_loc mod 256, _
+     $81, $00, _
+     $27, $2a, _
+     $4a, _
+     $b7, flag_loc / 256, flag_loc mod 256, _
+     $b6, dualport_return / 256, dualport_return mod 256, _
+     $81, buffer_count, _
+     $2c, $1f, _
+     $FE, buffer_location / 256, buffer_location mod 256, _
+     $BD, $F2, $7D, _
+     $b6, dualport_return/256, dualport_return mod 256, _
+     $4c, _
+     $b7, dualport_return/256, dualport_return mod 256, _
+     $fc, buffer_location / 256, buffer_location mod 256, _
+     $c3, $00, $1d, _
+     $10, $83, buffer_end / 256, buffer_end mod 256,  _
+     $2f, $03, _
+     $cc, buffer_base / 256, buffer_base mod 256, _
+     $fd, buffer_location / 256, buffer_location mod 256, _
      $39 }
 
   '--------------------------------------------------------------------'
@@ -136,7 +155,11 @@ if buffer_mode = 1
   else
     ' in non-irq mode, we ignore the code that actually sets upo the IRQ - we're going
     ' to push in data a different way...
-    ayc_init = { $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
+    'ayc_init = { $7c, dualport_status/256, dualport_status mod 256, _
+    '  $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
+    'ayc_init = { $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
+    ayc_init = { $86, $01, $b7, dualport_status/256, dualport_status mod 256, _
+      $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
   endif
   'ayc_init = { $cc, $30, $75, $fd, $d0, $08, $86, $00, $b7, dualport_return / 256, dualport_return mod 256 }
 
@@ -150,14 +173,13 @@ if buffer_mode = 1
 	' second line is: ldd #$100, std $d008 (remember: endian is reversed)
 	' which should set timer b to "almost nothing"
   if irq_mode = 1
-    ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
+  ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256, _
                 $1a, $10, _
                 $86, $80, $b7, $d0, $0e, _
 	  					 $cc, $1, $0, $fd, $d0, $08}
   else
-    ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256 }
+  ayc_exit = { $86, ayc_dp_sequence, $b7, dualport_status / 256, dualport_status mod 256 }
   endif
-
 endif
 
 ' set the framerate to 50fps, since that is what most AYC tracks are
@@ -235,11 +257,14 @@ endwhile
 sub ayc_update_timer
   current_tick = GetTickCount() - ayc_start_time 
   music_target = (current_tick / 960.0) * player_rate + 1
+  if ayc_buffer_overflow == true
+    ayc_ticked = int(music_target)
+    call Poke(flag_loc,0)
+  endif
   to_tick = int(music_target) - ayc_ticked
   if to_tick > 0
     ayc_ticked = ayc_ticked + 1
     call Poke(flag_loc, Peek(flag_loc)+1)
-    'print "tick " +to_tick+" from "+music_target+" vs "+ayc_ticked
   endif
 endsub
 
@@ -256,15 +281,19 @@ sub update_music_vbi
   ayc_tick = GetTickCount()
   ayc_played_this_frame = 0
   if ayc_buffer_played >= 0 
-		' wait for the dualport to have returned
-		' why is this a sequence?  because if not, bad things happen in the bathroom...
-		' once we've hit it, we update the codesprite to chang the sequence for the next run, so that we
-		' don't lose track	
-		while Peek(dualport_status) != ayc_dp_sequence
+    ' have a 1 second timeout on this - we've simplified the term since the '&1' could never ever be matched
+    ' anyhow - the sequence either _is_, or _is not_.  If it _is not_, we wait at least 10 ticks for
+    ' the first code to be executed.  We finally add a 1 second timeout - this should never ever get hit, but it'll cause
+    ' us to break out...
+		while ((Peek(dualport_status) != ayc_dp_sequence) or (GetTickCount()-ayc_tick)<10 and ayc_dp_sequence!=1) _
+          and (GetTickCount()-ayc_tick)<960
       if irq_mode = 0
         call ayc_update_timer
       endif
 		endwhile
+		if Peek(dualport_status) != ayc_dp_sequence
+      print "ohai, we didn't actuatlly update in "+(GetTickCount()-ayc_tick)+"... weird - dualport_status=" +Peek(dualport_status)+" expected "+ayc_dp_sequence
+    endif
     'print "endframe"
     ' reset benchmark counter once we've synced ;)
     ayc_tick = GetTickCount()
@@ -272,9 +301,11 @@ sub update_music_vbi
 		ayc_exit[2] = ayc_dp_sequence
 	  ' fill any used buffers with new sound data
   	ayc_played_this_frame = Peek(dualport_return)
-    if ayc_played_this_frame == buffer_count
-      print "WARN: AYC buffer limit hit - consider increasing buffer size..."
+    if ayc_played_this_frame >= buffer_count
+      print "WARN: AYC buffer limit of "+ayc_played_this_frame+" hit in "+(((GetTickCount()-lframe)/960.0)*1000.0)+" ms - consider increasing buffer size..."
+      ayc_buffer_overflow = true
     endif
+    lframe = GetTickCount()
     for i = 1 to ayc_played_this_frame
       call play_that_music
     next
@@ -327,7 +358,7 @@ sub update_music_vbi
     ayc_init[20] = wait_time / 256
   endif
   ' benchmark
-  ayc_tick = GetTickCount() - ayc_tick
+  w_tick = GetTickCount() - ayc_tick
 endsub
 
 ' generate a codesprite with lda #imm, sta buffer_base+offset
