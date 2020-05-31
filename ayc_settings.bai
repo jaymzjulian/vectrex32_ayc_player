@@ -10,7 +10,6 @@ irq_mode = 0
 buffer_mode_preserve_refresh = 0
 dualport_return = 1
 dualport_status = 2
-dualport_flag = 3
 
 '--------------------------------------------------------------------'
 ' This is only required if buffer_mode is set to 1 - you can save a few byres of ram by excluding it if you want, otherwise
@@ -27,3 +26,5 @@ player_rate = 50
 buffer_location = $c882
 buffer_base = $c884
 
+' Should we have SFX support?  you'll need to implement your own sfx_overlay function!
+sfx_enabled = false
