@@ -1,4 +1,3 @@
-include "ayc_settings.bai"
 AYC_MAX=10000
 
 '---------------------------
@@ -39,6 +38,8 @@ dim ayc_start_time
 ayc_start_time = 0
 ' drop this if you're only doing 2 channels, leaving one for sound effects
 max_regs = 14
+
+include "ayc_settings.bai"
 
 if buffer_mode = 1
   ' This is almost certainly wrong/destructive!
