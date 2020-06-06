@@ -1,0 +1,182 @@
+'
+' This is a format that is more designed for literal raw register dumps
+' which are encoded with _lossy_ encoding outside.  It's not currently "generally recommended"
+' to use this, but eventually it'll closer to/better than AYC, is the hope - but right now, 
+' it is useful for doing thigns like having digital music encoded to AY
+'
+' The interface is designed to be a drop-in replacement, so that you can develop for one,
+' but switch to the other
+'
+
+include "ayc_common.bai"
+dim jjay_offsets[8]
+dim jjay_decode_pos[8]
+dim jjay_halfbyte_pos[8]
+dim jjay_halfbyte_remainder[8]
+dim jjay_rle_byte[8]
+dim jjay_rle_len[8]
+dim jjay_handle
+dim jjay_data
+dim jjay_seg_len
+dim jjay_fn
+dim frames_since_seg
+jjay_frames_since_seg = 0
+
+sub load_and_init(file)
+  call setup_music_codesprites
+  jjay_handle = fopen(file, "rb")
+  jjay_fn = file
+  jjay_seg_len = 0
+  ' load our first segment
+  call jjay_load_next_seg
+  ' ensure our codesprites are setup
+  if buffer_mode = 1
+    ' generate the data loader
+    call generate_ayc_pokedata_codesprite()
+    call CodeSprite(ayc_pokedata)
+    for i = 1 to buffer_count
+      call play_that_music
+    next
+  endif
+endsub
+
+sub jjay_load_next_seg
+  print "load_next_seg after "+jjay_frames_since_seg
+  mem
+  start_time = GetTickCount()
+  seg_len = fgetc(jjay_handle)*256 + fgetc(jjay_handle)
+  'print "seg_len is",seg_len
+  jjay_data = fread(seg_len, jjay_handle)
+  ' we start with 8 offsets fo the datastreams
+  for i = 1 to 8
+    jjay_offsets[i] = jjay_data[(i-1)*2+1]*256 + jjay_data[(i-1)*2+2]
+    ' decode_pos starts from 1 now because byte #0 is the
+    ' RLE escape byte - when we add the LZ stuff, we'll do more with this...
+    jjay_decode_pos[i] = 1
+    jjay_halfbyte_pos[i] = 0
+    ' reset our RLE at these boundaries
+    jjay_rle_byte[i] = 0
+    jjay_rle_len[i] = 0
+    'print "Data stream "+i+"starts at "+jjay_offsets[i]+" "+((i-1)*2+1)+" "+((i-1)*2+2)
+  next
+  if feof(jjay_handle)
+    call fseek(jjay_handle, 0, 0)
+  endif
+
+  jjay_seg_len = jjay_offsets[3] - jjay_offsets[2]
+  frames_since_seg = 0
+  print "Took "+(GetTickCount()-start_time)+" to read audio"
+  mem
+endsub
+
+' grab a byte from a single byte stream
+function jjay_decode_simple(stream)
+  ' we do this to skip the notedata stream
+  stream = stream + 1
+  ' if we're in the middle of an RLE run, return that
+  if jjay_rle_len[stream] > 0
+    jjay_rle_len[stream] = jjay_rle_len[stream] - 1
+    return jjay_rle_byte[stream]
+  endif
+  ' grab our next byte
+  next_byte = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 1]
+  ' check if we're RLE running or not
+  if next_byte == jjay_data[jjay_offsets[stream] + 1]
+    ' why minus one?  because we're returning this frames byte - arguably, i should
+    ' save a small amount of cycles/complexity here by baking this into the encoder...
+    jjay_rle_len[stream] = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 2] - 1
+    jjay_rle_byte[stream] = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 3] 
+    jjay_decode_pos[stream] = jjay_decode_pos[stream] + 3
+    return jjay_rle_byte[stream]
+  else
+    jjay_decode_pos[stream] = jjay_decode_pos[stream] + 1
+    return next_byte
+  endif
+endfunction
+
+' halfbytes are encoded as high/low
+' i.e.:
+' (aydata[l][c+5] << 4) + aydata[l+1][c+5])
+function jjay_decode_halfbyte(stream)
+  if (jjay_halfbyte_pos[stream] & 1) = 0
+    jjay_halfbyte_remainder[stream] = jjay_decode_simple(stream)
+    next_byte = (jjay_halfbyte_remainder[stream]/16) & 15
+  else
+    next_byte = jjay_halfbyte_remainder[stream] & 15
+  endif
+  jjay_halfbyte_pos[stream] = jjay_halfbyte_pos[stream] + 1
+  return next_byte
+endfunction
+
+sub play_that_music
+jjay_frames_since_seg = jjay_frames_since_seg + 1
+now=GetTickCount()
+  twopow={1,2,4}
+  dim tone_flags[3]
+  ' set up our initial regs structure
+  dim outregs[14, 2]
+  for i = 1 to 14
+    outregs[i, 1] = i-1
+    outregs[i, 2] = 0
+  next
+
+  if jjay_decode_pos[2] >= jjay_seg_len
+    call jjay_load_next_seg
+  endif
+
+  ' stream 1,2,3 is freq data - this is a simple set of compressed byte streams
+  for c = 1 to 3
+    next_byte = jjay_decode_simple(c) 
+    ' the compressor stores a frequency table in stream #1 - this is abstracted for the others,m
+    ' since it's an uncompressed stream
+    outregs[c*2-1, 2] = jjay_data[jjay_offsets[1] + next_byte * 2 + 1]
+    outregs[c*2, 2] = jjay_data[jjay_offsets[1] + next_byte * 2 + 2]
+    if next_byte == 0
+      tone_flags[c] = 0
+    else
+      tone_flags[c] = 1
+    endif
+  next
+
+  ' stream 4,5,6 are volume data - this is a set of half-byte compressed streams
+  for c = 1 to 3
+    next_byte = jjay_decode_halfbyte(c+3)
+    outregs[c+8, 2] = next_byte
+  next
+
+  ' stream 7 is our noise data - this is encoded as:
+  ' lowb = aydata[l][6]
+  ' hib = (aydata[l][7] >> 3)&7
+  ' fb=((lowb << 3) + hib)
+  '
+  ' which represents:
+  ' bits 0-2 - noise/tone select (bits 3-6 of reg #7)
+  ' bits 3-7 - noise period (low 5 bits bits of reg #6)
+  '
+  ' we can allow _both_ ay and noise data at once if ay note is not 0
+  ' but this is currently not implemented in the encoder!
+  noise_data = jjay_decode_simple(7)
+  noise_period = noise_data / 8
+  noise_flags = noise_data & 7
+
+  outregs[7, 2] = noise_period
+  ' we can just shove these in
+  flags = (noise_flags * 8)
+  for c = 1 to 3
+    ' set tone if enable
+    if tone_flags[c] == 0
+      flags = flags | twopow[c]
+    endif
+  next
+  outregs[8, 2] = flags
+
+  if sfx_enabled
+    outregs = sfx_overlay(outregs)
+  endif
+
+  if buffer_mode = 0
+    call Sound(outregs)
+  else
+    call fill_buffer(outregs)
+  endif
+endsub
