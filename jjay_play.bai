@@ -28,6 +28,7 @@ sub load_and_init(file)
   jjay_fn = file
   jjay_seg_len = 0
   ' load our first segment
+  jjay_data = 0
   call jjay_load_next_seg
   ' ensure our codesprites are setup
   if buffer_mode = 1
@@ -121,6 +122,7 @@ now=GetTickCount()
   next
 
   if jjay_decode_pos[2] >= jjay_seg_len
+    jjay_data = 0
     call jjay_load_next_seg
   endif
 
