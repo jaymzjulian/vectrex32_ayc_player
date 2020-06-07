@@ -46,6 +46,11 @@ sub jjay_load_next_seg
   mem
   start_time = GetTickCount()
   seg_len = fgetc(jjay_handle)*256 + fgetc(jjay_handle)
+  ' another way to EOF
+  if seg_len < 0
+    call fseek(jjay_handle, 0, 0)
+    seg_len = fgetc(jjay_handle)*256 + fgetc(jjay_handle)
+  endif
   'print "seg_len is",seg_len
   jjay_data = fread(seg_len, jjay_handle)
   ' we start with 8 offsets fo the datastreams
