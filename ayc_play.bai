@@ -1,7 +1,7 @@
 include "ayc_common.bai"
 
 ' the largest file we can load, isnce there is no easy weay to get size
-AYC_MAX=10000
+AYC_MAX=30000
 
 '
 ' this is the in flight data specific for an AYC file

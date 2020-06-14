@@ -2,6 +2,8 @@
 ' format players - eventually, we'll rename some things and stop using the AYC naming, but
 ' for now, we just want it to work...
 
+dim ayc_last_frame_tick
+
 '---------------------------
 ' GLOBALS - these must be global 
 ' for your music to play!
@@ -198,6 +200,7 @@ endsub
 sub update_music_vbi
   if ayc_start_time == 0
     ayc_start_time = GetTickCount()
+    ayc_last_frame_tick = GetTickCount()
   endif
   ayc_tick = GetTickCount()
   ayc_played_this_frame = 0
@@ -207,13 +210,13 @@ sub update_music_vbi
     ' the first code to be executed.  We finally add a 1 second timeout - this should never ever get hit, but it'll cause
     ' us to break out...
 		while ((Peek(dualport_status) != ayc_dp_sequence) or (GetTickCount()-ayc_tick)<10 and ayc_dp_sequence!=1) _
-          and (GetTickCount()-ayc_tick)<960
+          and (GetTickCount()-ayc_last_frame_tick)<96
       if irq_mode = 0
         call ayc_update_timer
       endif
 		endwhile
 		if Peek(dualport_status) != ayc_dp_sequence
-      print "ohai, we didn't actuatlly update in "+(GetTickCount()-ayc_tick)+"... weird - dualport_status=" +Peek(dualport_status)+" expected "+ayc_dp_sequence
+      print "ohai, we didn't actually update in "+(GetTickCount()-ayc_last_frame_tick)+"... weird - dualport_status=" +Peek(dualport_status)+" expected "+ayc_dp_sequence
     endif
     'print "endframe"
     ' reset benchmark counter once we've synced ;)
@@ -235,6 +238,8 @@ sub update_music_vbi
   else
     ayc_buffer_played = 0
   endif
+
+  ayc_last_frame_tick = GetTickCount()
 
 
 	if buffer_mode_preserve_refresh = 1

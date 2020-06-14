@@ -8,6 +8,10 @@
 ' but switch to the other
 '
 
+debug_stream =  -1
+debug_channel = -1
+frame_count = 0
+
 include "ayc_common.bai"
 dim jjay_offsets[8]
 dim jjay_decode_pos[8]
@@ -15,6 +19,8 @@ dim jjay_halfbyte_pos[8]
 dim jjay_halfbyte_remainder[8]
 dim jjay_rle_byte[8]
 dim jjay_rle_len[8]
+dim jjay_ayc_dist[8]
+dim jjay_ayc_len[8]
 dim jjay_handle
 dim jjay_data
 dim jjay_seg_len
@@ -58,11 +64,13 @@ sub jjay_load_next_seg
     jjay_offsets[i] = jjay_data[(i-1)*2+1]*256 + jjay_data[(i-1)*2+2]
     ' decode_pos starts from 1 now because byte #0 is the
     ' RLE escape byte - when we add the LZ stuff, we'll do more with this...
-    jjay_decode_pos[i] = 1
+    jjay_decode_pos[i] = 2
     jjay_halfbyte_pos[i] = 0
     ' reset our RLE at these boundaries
     jjay_rle_byte[i] = 0
     jjay_rle_len[i] = 0
+    jjay_ayc_dist[i] = 0
+    jjay_ayc_len[i] = 0
     'print "Data stream "+i+"starts at "+jjay_offsets[i]+" "+((i-1)*2+1)+" "+((i-1)*2+2)
   next
   if feof(jjay_handle)
@@ -76,26 +84,66 @@ sub jjay_load_next_seg
 endsub
 
 ' grab a byte from a single byte stream
+dim rle_dec
+rle_dec = false
 function jjay_decode_simple(stream)
   ' we do this to skip the notedata stream
   stream = stream + 1
+  ' grab our next byte
   ' if we're in the middle of an RLE run, return that
   if jjay_rle_len[stream] > 0
     jjay_rle_len[stream] = jjay_rle_len[stream] - 1
     return jjay_rle_byte[stream]
   endif
-  ' grab our next byte
-  next_byte = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 1]
+  
+  ' if we're in the middle of an AYC run, return that, but still process rle!
+  via_ayc = false
+  if jjay_ayc_len[stream] > 0
+    jjay_ayc_len[stream] = jjay_ayc_len[stream] - 1
+    jjay_ayc_dist[stream] = jjay_ayc_dist[stream] - 1
+    ' compensate - fix my code laster to not be terrible
+    jjay_decode_pos[stream] = jjay_decode_pos[stream] - 1
+    ' is this -2 or -3?  i guess we'll find out...
+    next_byte = jjay_data[(jjay_offsets[stream] + (jjay_decode_pos[stream] - jjay_ayc_dist[stream])) - 2]
+    via_ayc = true
+  else
+    next_byte = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 1]
+  endif
   ' check if we're RLE running or not
-  if next_byte == jjay_data[jjay_offsets[stream] + 1]
-    ' why minus one?  because we're returning this frames byte - arguably, i should
-    ' save a small amount of cycles/complexity here by baking this into the encoder...
-    jjay_rle_len[stream] = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 2] - 1
-    jjay_rle_byte[stream] = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 3] 
+  if next_byte == jjay_data[jjay_offsets[stream] + 2] and rle_dec == false
+    if stream == debug_stream
+      print "jjay_rle_in:"+next_byte
+    endif
+    ' grab the control bytes by decoding the stream so that
+    ' we get them if they're behind an ayc crunch
+    rle_dec = true
+    jjay_decode_pos[stream] = jjay_decode_pos[stream] + 1
+    new_len = jjay_decode_simple(stream - 1)
+    new_byte = jjay_decode_simple(stream - 1)
+    jjay_rle_len[stream] = new_len
+    jjay_rle_byte[stream] = new_byte
+    rle_dec = false
+    if stream == debug_stream
+      print "rle:"+new_len+" x "+new_byte
+    endif
+    ' now gfrab the first byte by doing a "real" stream decode with our rle data set
+    return jjay_decode_simple(stream - 1)
+  ' ayc crunch area
+  elseif  next_byte == jjay_data[jjay_offsets[stream] + 1]
+    ' we just pull tehse straight from the stream for now,
+    ' since ayc can't be stacked
+    jjay_ayc_len[stream] = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 2] 
+    jjay_ayc_dist[stream] = jjay_data[jjay_offsets[stream] + jjay_decode_pos[stream] + 3] 
+    if stream == debug_stream
+      print "Found run "+jjay_ayc_len[stream]+" @ "+jjay_ayc_dist[stream] +" / " + jjay_decode_pos[stream] 
+    endif
     jjay_decode_pos[stream] = jjay_decode_pos[stream] + 3
-    return jjay_rle_byte[stream]
+    return jjay_decode_simple(stream - 1)
   else
     jjay_decode_pos[stream] = jjay_decode_pos[stream] + 1
+    if stream == debug_stream
+      print "jjay_byte_return:"+next_byte+" via ayc:"+via_ayc
+    endif
     return next_byte
   endif
 endfunction
@@ -115,6 +163,7 @@ function jjay_decode_halfbyte(stream)
 endfunction
 
 sub play_that_music
+frame_count = frame_count + 1
 jjay_frames_since_seg = jjay_frames_since_seg + 1
 now=GetTickCount()
   twopow={1,2,4}
@@ -134,10 +183,13 @@ now=GetTickCount()
   ' stream 1,2,3 is freq data - this is a simple set of compressed byte streams
   for c = 1 to 3
     next_byte = jjay_decode_simple(c) 
+    if c == debug_channel
+      print frame_count +":"+next_byte
+    endif
     ' the compressor stores a frequency table in stream #1 - this is abstracted for the others,m
     ' since it's an uncompressed stream
-    outregs[c*2-1, 2] = jjay_data[jjay_offsets[1] + next_byte * 2 + 1]
-    outregs[c*2, 2] = jjay_data[jjay_offsets[1] + next_byte * 2 + 2]
+    outregs[c*2-1, 2] = jjay_data[jjay_offsets[1] + next_byte * 2 - 1]
+    outregs[c*2, 2] = jjay_data[jjay_offsets[1] + next_byte * 2]
     if next_byte == 0
       tone_flags[c] = 0
     else
