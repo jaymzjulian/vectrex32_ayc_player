@@ -106,7 +106,7 @@ if buffer_mode = 1
      $81, $00, _
      $27, $2a, _
      $4a, _
-     $b7, flag_loc / 256, flag_loc mod 256, _
+     $7c, (player_jmp+4) / 256, (player_jmp+4) mod 256, _
      $b6, dualport_return / 256, dualport_return mod 256, _
      $81, buffer_count, _
      $2c, $1f, _
@@ -136,7 +136,6 @@ if buffer_mode = 1
   ' 3) set timer b to the remaining time untilk music
   if irq_mode = 1
   ayc_init = { $86, $00, $b7, dualport_return / 256, dualport_return mod 256, _
-               $86, $00, $b7, flag_loc / 256, flag_loc mod 256, _
               $1c, $ef, _
               $86, $a0, $b7, $d0, $0e, _
               $cc, $0, $2, $fd, $d0, $08 }
@@ -173,18 +172,13 @@ endif
 sub ayc_update_timer
   if ayc_start_time == 0
     ayc_start_time = GetTickCount()
+    ayc_last_timer = 0
   endif
   current_tick = GetTickCount() - ayc_start_time 
-  music_target = (current_tick / 960.0) * player_rate + 1
-  if ayc_buffer_overflow == true
-    ayc_ticked = int(music_target)
-    call Poke(flag_loc,0)
-    ayc_buffer_overflow = false
-  endif
-  to_tick = int(music_target) - ayc_ticked
-  if to_tick > 0
-    ayc_ticked = ayc_ticked + 1
-    call Poke(flag_loc, Peek(flag_loc)+1)
+  music_target = int((current_tick / 960.0) * player_rate + 1)
+  if ayc_last_timer != music_target
+    call Poke(flag_loc, int(music_target mod 256))
+    ayc_last_timer = music_target
   endif
 endsub
 
@@ -280,8 +274,8 @@ sub update_music_vbi
     print "AYC: (last: "+ayc_played_this_frame+") music target is "+music_target+" for tick "+current_tick, " vs " + played_to + " wait_time: "+wait_time
 
     ' shove that wait_time in the codesptie for the VIA, so we wait for that
-    ayc_init[19] = wait_time mod 256
-    ayc_init[20] = wait_time / 256
+    ayc_init[14] = wait_time mod 256
+    ayc_init[15] = wait_time / 256
   endif
   ' benchmark
   w_tick = GetTickCount() - ayc_tick

@@ -17,7 +17,7 @@ endif
 print GetFrameRate()
 
 ' load the AYC
-call load_and_init("switchblade.ayc")
+call load_and_init("music.ayc")
 
 controls = WaitForFrame(JoystickNone, Controller1, JoystickNone)
 
