@@ -3,6 +3,7 @@
 ' for now, we just want it to work...
 
 dim ayc_last_frame_tick
+dim ayc_last_timer
 
 '---------------------------
 ' GLOBALS - these must be global 
